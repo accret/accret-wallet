@@ -16,55 +16,125 @@ import type {
 } from "@/types/accountStorage";
 
 const ACCOUNT_STORAGE_KEY = process.env.ACCOUNT_STORAGE_KEY!;
+const CURRENT_ACCOUNT_ID_KEY = process.env.CURRENT_ACCOUNT_ID_KEY!;
 const DEFAULT_SVM_DERIVATION_PATH = "m/44'/501'/0'/0'";
 const DEFAULT_EVM_DERIVATION_PATH = "m/44'/60'/0'/0/0";
 
-if (ACCOUNT_STORAGE_KEY === undefined) {
-  throw new Error("ACCOUNT_STORAGE_KEY is not defined");
+if (ACCOUNT_STORAGE_KEY === undefined || CURRENT_ACCOUNT_ID_KEY === undefined) {
+  throw new Error(
+    "ACCOUNT_STORAGE_KEY or CURRENT_ACCOUNT_ID_KEY is not defined",
+  );
 }
 
-async function getAccountStorage(): Promise<AccountStorage | null> {
+async function getAllAccounts(): Promise<AccountStorage[]> {
   try {
-    const accountStorage = await SecureStore.getItemAsync(ACCOUNT_STORAGE_KEY);
-    if (accountStorage) {
-      return JSON.parse(accountStorage);
+    const accountsData = await SecureStore.getItemAsync(ACCOUNT_STORAGE_KEY);
+    if (accountsData) {
+      return JSON.parse(accountsData);
     }
-    return null;
+    return [];
   } catch (error) {
-    console.error("Failed to get account storage from secure storage", error);
-    return null;
+    console.error("Failed to get accounts from secure storage", error);
+    return [];
   }
 }
 
-async function saveAccountStorage(
-  accountStorage: AccountStorage,
-): Promise<void> {
+async function saveAllAccounts(accounts: AccountStorage[]): Promise<void> {
   try {
     await SecureStore.setItemAsync(
       ACCOUNT_STORAGE_KEY,
-      JSON.stringify(accountStorage),
+      JSON.stringify(accounts),
     );
   } catch (error) {
-    console.error("Failed to save account storage to secure storage", error);
+    console.error("Failed to save accounts to secure storage", error);
     throw error;
   }
 }
 
-async function initializeAccountStorage(
+async function getAccountById(
+  accountId: string,
+): Promise<AccountStorage | null> {
+  try {
+    const accounts = await getAllAccounts();
+    return (
+      accounts.find((account) => account.userAccountID === accountId) || null
+    );
+  } catch (error) {
+    console.error("Failed to get account by ID", error);
+    return null;
+  }
+}
+
+async function saveAccount(accountToSave: AccountStorage): Promise<void> {
+  try {
+    const accounts = await getAllAccounts();
+    const existingIndex = accounts.findIndex(
+      (account) => account.userAccountID === accountToSave.userAccountID,
+    );
+
+    if (existingIndex >= 0) {
+      // Update existing account
+      accounts[existingIndex] = accountToSave;
+    } else {
+      // Add new account
+      accounts.push(accountToSave);
+    }
+
+    await saveAllAccounts(accounts);
+  } catch (error) {
+    console.error("Failed to save account", error);
+    throw error;
+  }
+}
+
+async function getOrCreateAccount(
   userAccountID: string,
   userAccountName: string,
 ): Promise<AccountStorage> {
-  const existingStorage = await getAccountStorage();
-  if (existingStorage) {
-    existingStorage.userAccountID = userAccountID;
-    existingStorage.userAccountName = userAccountName;
-    return existingStorage;
+  const existingAccount = await getAccountById(userAccountID);
+
+  if (existingAccount) {
+    // Update the name if it changed
+    if (existingAccount.userAccountName !== userAccountName) {
+      existingAccount.userAccountName = userAccountName;
+      await saveAccount(existingAccount);
+    }
+    return existingAccount;
   }
 
-  return {
+  // Create a new account
+  const newAccount: AccountStorage = {
     userAccountID,
     userAccountName,
   };
+
+  await saveAccount(newAccount);
+  return newAccount;
+}
+
+async function setCurrentAccountId(accountId: string): Promise<void> {
+  try {
+    await SecureStore.setItemAsync(CURRENT_ACCOUNT_ID_KEY, accountId);
+  } catch (error) {
+    console.error("Failed to set current account ID", error);
+    throw error;
+  }
+}
+
+async function getCurrentAccountId(): Promise<string | null> {
+  try {
+    return await SecureStore.getItemAsync(CURRENT_ACCOUNT_ID_KEY);
+  } catch (error) {
+    console.error("Failed to get current account ID", error);
+    return null;
+  }
+}
+
+async function getCurrentAccount(): Promise<AccountStorage | null> {
+  const currentId = await getCurrentAccountId();
+  if (!currentId) return null;
+
+  return await getAccountById(currentId);
 }
 
 export async function connectSVMAccountWithSeedPhrase(
@@ -93,12 +163,18 @@ export async function connectSVMAccountWithSeedPhrase(
       derivationPath: path,
     };
 
-    const accountStorage = await initializeAccountStorage(
+    const accountStorage = await getOrCreateAccount(
       userAccountID,
       userAccountName,
     );
     accountStorage.svm = svmAccount;
-    await saveAccountStorage(accountStorage);
+    await saveAccount(accountStorage);
+
+    // Set as current account if no current account is set
+    const currentId = await getCurrentAccountId();
+    if (!currentId) {
+      await setCurrentAccountId(userAccountID);
+    }
 
     console.log(
       "Connected to SVM (Solana) Account with seed phrase using derivation path:",
@@ -126,12 +202,18 @@ export async function connectSVMAccountWithPrivateKey(
       secretKey: keypair.secretKey,
     };
 
-    const accountStorage = await initializeAccountStorage(
+    const accountStorage = await getOrCreateAccount(
       userAccountID,
       userAccountName,
     );
     accountStorage.svm = svmAccount;
-    await saveAccountStorage(accountStorage);
+    await saveAccount(accountStorage);
+
+    // Set as current account if no current account is set
+    const currentId = await getCurrentAccountId();
+    if (!currentId) {
+      await setCurrentAccountId(userAccountID);
+    }
 
     console.log("Connected to SVM (Solana) Account with private key");
   } catch (error) {
@@ -175,12 +257,18 @@ export async function connectEVMAccountWithSeedPhrase(
       derivationPath: path,
     };
 
-    const accountStorage = await initializeAccountStorage(
+    const accountStorage = await getOrCreateAccount(
       userAccountID,
       userAccountName,
     );
     accountStorage.evm = evmAccount;
-    await saveAccountStorage(accountStorage);
+    await saveAccount(accountStorage);
+
+    // Set as current account if no current account is set
+    const currentId = await getCurrentAccountId();
+    if (!currentId) {
+      await setCurrentAccountId(userAccountID);
+    }
 
     console.log(
       "Connected to EVM (Ethereum) Account with seed phrase using derivation path:",
@@ -210,12 +298,18 @@ export async function connectEVMAccountWithPrivateKey(
       secretKey: new Uint8Array(Buffer.from(wallet.privateKey.slice(2), "hex")),
     };
 
-    const accountStorage = await initializeAccountStorage(
+    const accountStorage = await getOrCreateAccount(
       userAccountID,
       userAccountName,
     );
     accountStorage.evm = evmAccount;
-    await saveAccountStorage(accountStorage);
+    await saveAccount(accountStorage);
+
+    // Set as current account if no current account is set
+    const currentId = await getCurrentAccountId();
+    if (!currentId) {
+      await setCurrentAccountId(userAccountID);
+    }
 
     console.log("Connected to EVM (Ethereum) Account with private key");
   } catch (error) {
@@ -224,13 +318,18 @@ export async function connectEVMAccountWithPrivateKey(
   }
 }
 
-export async function disconnectSVMAccount(): Promise<void> {
+export async function disconnectSVMAccount(
+  userAccountID: string,
+): Promise<void> {
   try {
-    const accountStorage = await getAccountStorage();
-    if (accountStorage) {
-      delete accountStorage.svm;
-      await saveAccountStorage(accountStorage);
-      console.log("Disconnected from SVM (Solana) Account");
+    const account = await getAccountById(userAccountID);
+    if (account) {
+      delete account.svm;
+      await saveAccount(account);
+      console.log(
+        "Disconnected from SVM (Solana) Account for user:",
+        userAccountID,
+      );
     }
   } catch (error) {
     console.error("Failed to disconnect SVM account", error);
@@ -238,13 +337,18 @@ export async function disconnectSVMAccount(): Promise<void> {
   }
 }
 
-export async function disconnectEVMAccount(): Promise<void> {
+export async function disconnectEVMAccount(
+  userAccountID: string,
+): Promise<void> {
   try {
-    const accountStorage = await getAccountStorage();
-    if (accountStorage) {
-      delete accountStorage.evm;
-      await saveAccountStorage(accountStorage);
-      console.log("Disconnected from EVM (Ethereum) Account");
+    const account = await getAccountById(userAccountID);
+    if (account) {
+      delete account.evm;
+      await saveAccount(account);
+      console.log(
+        "Disconnected from EVM (Ethereum) Account for user:",
+        userAccountID,
+      );
     }
   } catch (error) {
     console.error("Failed to disconnect EVM account", error);
@@ -252,9 +356,36 @@ export async function disconnectEVMAccount(): Promise<void> {
   }
 }
 
+export async function disconnectAccount(userAccountID: string): Promise<void> {
+  try {
+    const accounts = await getAllAccounts();
+    const updatedAccounts = accounts.filter(
+      (account) => account.userAccountID !== userAccountID,
+    );
+
+    await saveAllAccounts(updatedAccounts);
+
+    // If we deleted the current account, set a new current account if available
+    const currentId = await getCurrentAccountId();
+    if (currentId === userAccountID) {
+      if (updatedAccounts.length > 0) {
+        await setCurrentAccountId(updatedAccounts[0].userAccountID);
+      } else {
+        await SecureStore.deleteItemAsync(CURRENT_ACCOUNT_ID_KEY);
+      }
+    }
+
+    console.log("Disconnected account:", userAccountID);
+  } catch (error) {
+    console.error("Failed to disconnect account", error);
+    throw error;
+  }
+}
+
 export async function disconnectAllAccounts(): Promise<void> {
   try {
     await SecureStore.deleteItemAsync(ACCOUNT_STORAGE_KEY);
+    await SecureStore.deleteItemAsync(CURRENT_ACCOUNT_ID_KEY);
     console.log("Disconnected from all accounts");
   } catch (error) {
     console.error("Failed to disconnect all accounts", error);
@@ -262,31 +393,80 @@ export async function disconnectAllAccounts(): Promise<void> {
   }
 }
 
-export async function useAccountStorage(): Promise<AccountStorage | null> {
+export async function getAllAccountsInfo(): Promise<
+  { id: string; name: string }[]
+> {
   try {
-    return await getAccountStorage();
+    const accounts = await getAllAccounts();
+    return accounts.map((account) => ({
+      id: account.userAccountID,
+      name: account.userAccountName,
+    }));
   } catch (error) {
-    console.error("Failed to get account storage", error);
+    console.error("Failed to get accounts info", error);
+    return [];
+  }
+}
+
+export async function switchAccount(userAccountID: string): Promise<void> {
+  try {
+    const account = await getAccountById(userAccountID);
+    if (!account) {
+      throw new Error(`Account with ID ${userAccountID} not found`);
+    }
+
+    await setCurrentAccountId(userAccountID);
+    console.log("Switched to account:", userAccountID);
+  } catch (error) {
+    console.error("Failed to switch account", error);
+    throw error;
+  }
+}
+
+export async function useCurrentAccount(): Promise<AccountStorage | null> {
+  return await getCurrentAccount();
+}
+
+export async function useCurrentSVMAccount(): Promise<SVM_Account | null> {
+  try {
+    const account = await getCurrentAccount();
+    return account?.svm || null;
+  } catch (error) {
+    console.error("Failed to get current SVM account", error);
     return null;
   }
 }
 
-export async function useSVMAccount(): Promise<SVM_Account | null> {
+export async function useCurrentEVMAccount(): Promise<EVM_Account | null> {
   try {
-    const accountStorage = await getAccountStorage();
-    return accountStorage?.svm || null;
+    const account = await getCurrentAccount();
+    return account?.evm || null;
   } catch (error) {
-    console.error("Failed to get SVM account", error);
+    console.error("Failed to get current EVM account", error);
     return null;
   }
 }
 
-export async function useEVMAccount(): Promise<EVM_Account | null> {
+export async function getSVMAccountById(
+  userAccountID: string,
+): Promise<SVM_Account | null> {
   try {
-    const accountStorage = await getAccountStorage();
-    return accountStorage?.evm || null;
+    const account = await getAccountById(userAccountID);
+    return account?.svm || null;
   } catch (error) {
-    console.error("Failed to get EVM account", error);
+    console.error("Failed to get SVM account by ID", error);
+    return null;
+  }
+}
+
+export async function getEVMAccountById(
+  userAccountID: string,
+): Promise<EVM_Account | null> {
+  try {
+    const account = await getAccountById(userAccountID);
+    return account?.evm || null;
+  } catch (error) {
+    console.error("Failed to get EVM account by ID", error);
     return null;
   }
 }
