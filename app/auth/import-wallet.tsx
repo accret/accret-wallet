@@ -12,7 +12,9 @@ export default function ImportWallet() {
         alignItems: "center",
         backgroundColor: colors.background,
       }}>
-      <Text style={{ color: colors.text }}>Import Wallet</Text>
+      <Text style={{ color: colors.text, fontSize: 18, fontWeight: "500" }}>
+        import wallet
+      </Text>
     </View>
   );
 }

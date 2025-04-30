@@ -12,7 +12,9 @@ export default function CreateWallet() {
         alignItems: "center",
         backgroundColor: colors.background,
       }}>
-      <Text style={{ color: colors.text }}>Create Wallet</Text>
+      <Text style={{ color: colors.text, fontSize: 18, fontWeight: "500" }}>
+        create wallet
+      </Text>
     </View>
   );
 }

@@ -1,7 +1,7 @@
 import { useTheme } from "@/theme";
 import { Text, View } from "react-native";
 
-export default function Index() {
+export default function AuthenticatedIndex() {
   const { colors } = useTheme();
 
   return (
@@ -12,7 +12,9 @@ export default function Index() {
         alignItems: "center",
         backgroundColor: colors.background,
       }}>
-      <Text style={{ color: colors.text }}>Accret Wallet</Text>
+      <Text style={{ color: colors.text, fontSize: 18, fontWeight: "500" }}>
+        accret wallet
+      </Text>
     </View>
   );
 }
