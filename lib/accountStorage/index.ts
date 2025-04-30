@@ -1,7 +1,3 @@
-/* eslint-disable import/first */
-import "react-native-get-random-values";
-global.Buffer = global.Buffer || require("buffer").Buffer;
-
 import bs58 from "bs58";
 import * as bip39 from "bip39";
 import { Wallet } from "ethers";

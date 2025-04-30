@@ -1,6 +1,6 @@
 {
   "name": "accret-wallet",
-  "main": "expo-router/entry",
+  "main": "entrypoint.ts",
   "version": "1.0.0",
   "scripts": {
     "start": "expo start",
