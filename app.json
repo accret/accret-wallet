@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "accret-wallet",
-    "slug": "accret-wallet",
+    "name": "Accret",
+    "slug": "accret",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
@@ -10,7 +10,7 @@
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.codeparth.accret-wallet"
+      "bundleIdentifier": "com.codeparth.accret"
     },
     "android": {
       "adaptiveIcon": {
