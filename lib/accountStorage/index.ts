@@ -11,8 +11,8 @@ import type {
   AccountStorage,
 } from "@/types/accountStorage";
 
-const ACCOUNT_STORAGE_KEY = process.env.ACCOUNT_STORAGE_KEY!;
-const CURRENT_ACCOUNT_ID_KEY = process.env.CURRENT_ACCOUNT_ID_KEY!;
+const ACCOUNT_STORAGE_KEY = "AISHzt0ifcbIV9bra3DE5eJQT9veElqiCEl4CuPlTA";
+const CURRENT_ACCOUNT_ID_KEY = "gRwE83aoCzn0JXmM0MMWVLJPOrC2O9wXjCNxCTezXjE";
 const DEFAULT_SVM_DERIVATION_PATH = "m/44'/501'/0'/0'";
 const DEFAULT_EVM_DERIVATION_PATH = "m/44'/60'/0'/0/0";
 
