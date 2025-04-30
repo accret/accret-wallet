@@ -1,34 +1,28 @@
 import AccretLogo from "@/logo";
-import { useState } from "react";
 import { useTheme } from "@/theme";
 import { useRouter } from "expo-router";
 import * as WebBrowser from "expo-web-browser";
-import {
-  Text,
-  View,
-  TouchableOpacity,
-  StyleSheet,
-  Pressable,
-} from "react-native";
+import { Text, View, TouchableOpacity, StyleSheet } from "react-native";
 
 export default function Index() {
   const router = useRouter();
   const { colors } = useTheme();
-  const [agreeToTerms, setAgreeToTerms] = useState(false);
 
   const handleCreateWallet = () => {
-    if (agreeToTerms) {
-      router.push("/auth/create-wallet");
-    }
+    router.push("/auth/create-wallet");
   };
 
   const handleImportWallet = () => {
-    if (agreeToTerms) {
-      router.push("/auth/import-wallet");
-    }
+    router.push("/auth/import-wallet");
   };
 
-  const openTermsOfService = async () => {
+  const openTermsOfUse = async () => {
+    // Replace with your actual terms of use URL
+    await WebBrowser.openBrowserAsync("https://api.accret.fun");
+  };
+
+  const openPrivacyPolicy = async () => {
+    // Replace with your actual privacy policy URL
     await WebBrowser.openBrowserAsync("https://api.accret.fun");
   };
 
@@ -39,57 +33,35 @@ export default function Index() {
       alignItems: "center",
       backgroundColor: colors.background,
       paddingHorizontal: 20,
-      paddingBottom: 60,
+      paddingBottom: 20,
+    },
+    contentContainer: {
+      alignItems: "center",
+      width: "100%",
+      marginBottom: 50,
     },
     logoContainer: {
       alignItems: "center",
-      marginBottom: 70,
-    },
-    logo: {
-      width: 100,
-      height: 100,
-      marginBottom: 40,
+      marginBottom: 50,
     },
     title: {
-      fontSize: 28,
-      fontWeight: "600",
+      fontSize: 34,
+      fontWeight: "700",
       color: colors.text,
-      marginBottom: 12,
+      marginBottom: 16,
       textAlign: "center",
     },
     subtitle: {
-      fontSize: 16,
+      fontSize: 18,
+      lineHeight: 24,
       color: colors.secondaryText,
       textAlign: "center",
       marginBottom: 40,
+      paddingHorizontal: 10,
     },
-    termsContainer: {
-      flexDirection: "row",
-      alignItems: "center",
-      marginBottom: 24,
-    },
-    checkbox: {
-      width: 24,
-      height: 24,
-      borderRadius: 12,
-      borderWidth: 2,
-      borderColor: agreeToTerms ? colors.primary : colors.secondaryText,
-      justifyContent: "center",
-      alignItems: "center",
-      marginRight: 12,
-      backgroundColor: agreeToTerms ? colors.primary : "transparent",
-    },
-    checkmark: {
-      color: "#FFFFFF",
-      fontSize: 14,
-      fontWeight: "bold",
-    },
-    termsText: {
-      fontSize: 16,
-      color: colors.text,
-    },
-    termsLink: {
-      color: colors.primary,
+    buttonsContainer: {
+      width: "100%",
+      paddingHorizontal: 16,
     },
     button: {
       width: "100%",
@@ -100,26 +72,33 @@ export default function Index() {
       marginBottom: 16,
     },
     primaryButton: {
-      backgroundColor: agreeToTerms ? colors.primary : colors.disabledButton,
+      backgroundColor: colors.primary,
     },
     secondaryButton: {
       backgroundColor: "transparent",
     },
     buttonText: {
-      fontSize: 16,
+      fontSize: 18,
       fontWeight: "600",
-      color: agreeToTerms ? "#FFFFFF" : colors.tertiaryText,
+      color: "#FFFFFF",
     },
     secondaryButtonText: {
-      color: agreeToTerms ? colors.text : colors.tertiaryText,
+      color: colors.text,
     },
     footer: {
-      position: "absolute",
-      bottom: 10,
-      width: 40,
-      height: 5,
-      backgroundColor: colors.border,
-      borderRadius: 3,
+      width: "100%",
+      alignItems: "center",
+      marginBottom: 20,
+    },
+    termsText: {
+      fontSize: 14,
+      lineHeight: 20,
+      color: colors.secondaryText,
+      textAlign: "center",
+    },
+    termsLink: {
+      color: colors.text,
+      fontWeight: "600",
     },
   });
 
@@ -129,41 +108,40 @@ export default function Index() {
         <AccretLogo width={196} height={196} />
         <Text style={styles.title}>Welcome to Accret</Text>
         <Text style={styles.subtitle}>
-          To get started, create a new wallet or import an existing one
+          To get started, create a new {"\n"} wallet or import an existing one
         </Text>
       </View>
 
-      <Pressable
-        style={styles.termsContainer}
-        onPress={() => setAgreeToTerms(!agreeToTerms)}>
-        <View style={styles.checkbox}>
-          {agreeToTerms && <Text style={styles.checkmark}>✓</Text>}
+      <View style={styles.contentContainer}>
+        <View style={styles.buttonsContainer}>
+          <TouchableOpacity
+            style={[styles.button, styles.primaryButton]}
+            onPress={handleCreateWallet}>
+            <Text style={styles.buttonText}>Create a new wallet</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.button, styles.secondaryButton]}
+            onPress={handleImportWallet}>
+            <Text style={[styles.buttonText, styles.secondaryButtonText]}>
+              Import existing wallet
+            </Text>
+          </TouchableOpacity>
         </View>
-        <Text style={styles.termsText}>
-          I agree to the{" "}
-          <Text style={styles.termsLink} onPress={openTermsOfService}>
-            Terms of Service
+
+        <View style={styles.footer}>
+          <Text style={styles.termsText}>
+            By continuing, you agree to our{"\n"}
+            <Text style={styles.termsLink} onPress={openTermsOfUse}>
+              Terms of Use
+            </Text>{" "}
+            and{" "}
+            <Text style={styles.termsLink} onPress={openPrivacyPolicy}>
+              Privacy Policy
+            </Text>
           </Text>
-        </Text>
-      </Pressable>
-
-      <TouchableOpacity
-        style={[styles.button, styles.primaryButton]}
-        onPress={handleCreateWallet}
-        disabled={!agreeToTerms}>
-        <Text style={styles.buttonText}>Create a new wallet</Text>
-      </TouchableOpacity>
-
-      <TouchableOpacity
-        style={[styles.button, styles.secondaryButton]}
-        onPress={handleImportWallet}
-        disabled={!agreeToTerms}>
-        <Text style={[styles.buttonText, styles.secondaryButtonText]}>
-          Import existing wallet
-        </Text>
-      </TouchableOpacity>
-
-      <View style={styles.footer} />
+        </View>
+      </View>
     </View>
   );
 }
