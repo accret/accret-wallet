@@ -30,8 +30,8 @@ interface ThemeContextType {
 const lightColors: ColorPalette = {
   background: "#F6F6F6",
   surface: "#F9F9FB",
-  primary: "#5D5FEF",
-  primaryLight: "#F0F0FF",
+  primary: "#2E85FE",
+  primaryLight: "#E6F2FF",
   text: "#333333",
   secondaryText: "#666666",
   tertiaryText: "#999999",
@@ -41,16 +41,16 @@ const lightColors: ColorPalette = {
   card: "#FFFFFF",
   inputBackground: "#F9F9F9",
   disabledButton: "#CCCCCC",
-  icon: "#5D5FEF",
-  networkBadge: "#F0F0FF",
-  actionIcon: "#5D5FEF",
+  icon: "#2E85FE",
+  networkBadge: "#E6F2FF",
+  actionIcon: "#2E85FE",
 };
 
 const darkColors: ColorPalette = {
   background: "#121212",
   surface: "#1E1E1E",
-  primary: "#6D6FFF",
-  primaryLight: "#2D2D3F",
+  primary: "#2E85FE",
+  primaryLight: "",
   text: "#FFFFFF",
   secondaryText: "#AAAAAA",
   tertiaryText: "#777777",
@@ -60,9 +60,9 @@ const darkColors: ColorPalette = {
   card: "#242424",
   inputBackground: "#2A2A2A",
   disabledButton: "#444444",
-  icon: "#6D6FFF",
-  networkBadge: "#2D2D3F",
-  actionIcon: "#6D6FFF",
+  icon: "#2E85FE",
+  networkBadge: "",
+  actionIcon: "#2E85FE",
 };
 
 const ThemeContext = createContext<ThemeContextType>({
