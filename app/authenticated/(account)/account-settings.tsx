@@ -105,6 +105,27 @@ export default function AccountSettings() {
     );
   };
 
+  const handleAddAccount = () => {
+    Alert.alert(
+      "Add Account",
+      "Would you like to create a new wallet or import an existing one?",
+      [
+        {
+          text: "Cancel",
+          style: "cancel",
+        },
+        {
+          text: "Create New",
+          onPress: () => router.push("/auth/create-wallet"),
+        },
+        {
+          text: "Import Existing",
+          onPress: () => router.push("/auth/import-wallet"),
+        },
+      ],
+    );
+  };
+
   const handleSignOut = () => {
     Alert.alert(
       "Sign Out",
@@ -309,6 +330,23 @@ export default function AccountSettings() {
               </View>
             </TouchableOpacity>
           ))}
+
+          <TouchableOpacity
+            style={styles.addAccountButton}
+            onPress={handleAddAccount}>
+            <View style={styles.addAccountContent}>
+              <View
+                style={[
+                  styles.addAccountIcon,
+                  { backgroundColor: colors.primaryLight || "#E6F2FF" },
+                ]}>
+                <Ionicons name="add" size={24} color={colors.primary} />
+              </View>
+              <Text style={[styles.addAccountText, { color: colors.text }]}>
+                Add Account
+              </Text>
+            </View>
+          </TouchableOpacity>
         </View>
 
         <View
@@ -495,5 +533,26 @@ const styles = StyleSheet.create({
   },
   versionText: {
     fontSize: 14,
+  },
+  addAccountButton: {
+    borderBottomWidth: 1,
+    borderBottomColor: "rgba(0,0,0,0.05)",
+    padding: 16,
+  },
+  addAccountContent: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  addAccountIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    justifyContent: "center",
+    alignItems: "center",
+    marginRight: 12,
+  },
+  addAccountText: {
+    fontSize: 16,
+    fontWeight: "500",
   },
 });
