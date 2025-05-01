@@ -20,6 +20,7 @@ import {
   disconnectAccount,
   getSVMAccountById,
   getEVMAccountById,
+  getAllAccounts,
 } from "@/lib/accountStorage";
 import type {
   AccountStorage,
@@ -140,7 +141,17 @@ export default function AccountDetails() {
           onPress: async () => {
             try {
               await disconnectAccount(accountId);
-              router.replace("/authenticated");
+
+              // Check if there are any remaining accounts
+              const remainingAccounts = await getAllAccounts();
+
+              if (remainingAccounts.length === 0) {
+                // If no accounts left, go back to welcome screen
+                router.replace("/");
+              } else {
+                // Otherwise go back to the authenticated route
+                router.replace("/authenticated");
+              }
             } catch (error) {
               console.error("Failed to remove account:", error);
               Alert.alert("Error", "Failed to remove account");
