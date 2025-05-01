@@ -36,6 +36,13 @@ export default function RootLayout() {
             headerLeft: () => null,
           }}
         />
+        <Stack.Screen
+          name="authenticated/(account)"
+          options={{
+            headerShown: false,
+            gestureEnabled: false,
+          }}
+        />
       </Stack>
     </ThemeProvider>
   );

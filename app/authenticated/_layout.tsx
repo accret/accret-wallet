@@ -2,15 +2,11 @@ import React from "react";
 import { useEffect } from "react";
 import { useTheme } from "@/theme";
 import { Stack } from "expo-router";
-import { BackHandler, Platform } from "react-native";
-import {
-  useSafeAreaInsets,
-  SafeAreaView,
-} from "react-native-safe-area-context";
+import { BackHandler } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 export default function AuthenticatedLayout() {
   const { colors } = useTheme();
-  const insets = useSafeAreaInsets();
 
   useEffect(() => {
     const backHandler = BackHandler.addEventListener(
@@ -27,12 +23,9 @@ export default function AuthenticatedLayout() {
     <SafeAreaView
       style={{
         flex: 1,
-        paddingTop: Platform.OS === "android" ? insets.top : 0,
-        paddingBottom: Platform.OS === "android" ? insets.bottom : 0,
-        paddingLeft: Platform.OS === "android" ? insets.left : 0,
-        paddingRight: Platform.OS === "android" ? insets.right : 0,
         backgroundColor: colors.background,
-      }}>
+      }}
+      edges={["top", "left", "right", "bottom"]}>
       <Stack
         screenOptions={{
           headerShown: false,
@@ -47,14 +40,7 @@ export default function AuthenticatedLayout() {
           }}
         />
         <Stack.Screen
-          name="account-details"
-          options={{
-            headerShown: false,
-            gestureEnabled: true,
-          }}
-        />
-        <Stack.Screen
-          name="account-settings"
+          name="(account)"
           options={{
             headerShown: false,
             gestureEnabled: true,
