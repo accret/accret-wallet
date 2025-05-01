@@ -22,7 +22,7 @@ if (ACCOUNT_STORAGE_KEY === undefined || CURRENT_ACCOUNT_ID_KEY === undefined) {
   );
 }
 
-async function getAllAccounts(): Promise<AccountStorage[]> {
+export async function getAllAccounts(): Promise<AccountStorage[]> {
   try {
     const accountsData = await SecureStore.getItemAsync(ACCOUNT_STORAGE_KEY);
     if (accountsData) {
@@ -47,7 +47,7 @@ async function saveAllAccounts(accounts: AccountStorage[]): Promise<void> {
   }
 }
 
-async function getAccountById(
+export async function getAccountById(
   accountId: string,
 ): Promise<AccountStorage | null> {
   try {
@@ -83,7 +83,7 @@ async function saveAccount(accountToSave: AccountStorage): Promise<void> {
   }
 }
 
-async function getOrCreateAccount(
+export async function getOrCreateAccount(
   userAccountID: string,
   userAccountName: string,
 ): Promise<AccountStorage> {
@@ -108,7 +108,7 @@ async function getOrCreateAccount(
   return newAccount;
 }
 
-async function setCurrentAccountId(accountId: string): Promise<void> {
+export async function setCurrentAccountId(accountId: string): Promise<void> {
   try {
     await SecureStore.setItemAsync(CURRENT_ACCOUNT_ID_KEY, accountId);
   } catch (error) {
@@ -117,7 +117,7 @@ async function setCurrentAccountId(accountId: string): Promise<void> {
   }
 }
 
-async function getCurrentAccountId(): Promise<string | null> {
+export async function getCurrentAccountId(): Promise<string | null> {
   try {
     return await SecureStore.getItemAsync(CURRENT_ACCOUNT_ID_KEY);
   } catch (error) {
@@ -126,7 +126,7 @@ async function getCurrentAccountId(): Promise<string | null> {
   }
 }
 
-async function getCurrentAccount(): Promise<AccountStorage | null> {
+export async function getCurrentAccount(): Promise<AccountStorage | null> {
   const currentId = await getCurrentAccountId();
   if (!currentId) return null;
 
