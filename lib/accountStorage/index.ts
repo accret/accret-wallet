@@ -83,6 +83,35 @@ async function saveAccount(accountToSave: AccountStorage): Promise<void> {
   }
 }
 
+export async function saveAccountName(
+  accountId: string,
+  newName: string,
+): Promise<AccountStorage> {
+  try {
+    const account = await getAccountById(accountId);
+    if (!account) {
+      throw new Error(`Account with ID ${accountId} not found`);
+    }
+
+    account.userAccountName = newName;
+    await saveAccount(account);
+
+    // Force refresh of all stored account data to ensure consistency
+    const updatedAccount = await getAccountById(accountId);
+    if (!updatedAccount) {
+      throw new Error("Failed to retrieve updated account");
+    }
+
+    console.log("Updated account name for:", accountId);
+
+    // Return the updated account object
+    return updatedAccount;
+  } catch (error) {
+    console.error("Failed to update account name", error);
+    throw error;
+  }
+}
+
 export async function getOrCreateAccount(
   userAccountID: string,
   userAccountName: string,
@@ -131,6 +160,33 @@ export async function getCurrentAccount(): Promise<AccountStorage | null> {
   if (!currentId) return null;
 
   return await getAccountById(currentId);
+}
+
+// Function to generate a sequential account name
+export async function generateAccountName(): Promise<string> {
+  try {
+    const accounts = await getAllAccounts();
+
+    // Find all accounts that match the pattern "Account X"
+    const accountNumberRegex = /^Account (\d+)$/;
+    const accountNumbers = accounts
+      .map((account) => {
+        const match = account.userAccountName.match(accountNumberRegex);
+        return match ? parseInt(match[1]) : 0;
+      })
+      .filter((num) => num > 0);
+
+    // Find the next available number
+    let nextNumber = 1;
+    if (accountNumbers.length > 0) {
+      nextNumber = Math.max(...accountNumbers) + 1;
+    }
+
+    return `Account ${nextNumber}`;
+  } catch (error) {
+    console.error("Failed to generate account name", error);
+    return "Account 1"; // Fallback
+  }
 }
 
 export async function connectSVMAccountWithSeedPhrase(

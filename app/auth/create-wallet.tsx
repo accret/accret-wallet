@@ -16,6 +16,7 @@ import { Ionicons } from "@expo/vector-icons";
 import {
   connectSVMAccountWithSeedPhrase,
   connectEVMAccountWithSeedPhrase,
+  generateAccountName,
 } from "@/lib/accountStorage";
 
 export default function CreateWallet() {
@@ -71,7 +72,9 @@ export default function CreateWallet() {
 
       // Generate a unique account ID using timestamp
       const userAccountID = `wallet_${Date.now()}`;
-      const userAccountName = "My Wallet"; // Default name
+
+      // Generate a sequential account name (Account 1, Account 2, etc.)
+      const userAccountName = await generateAccountName();
 
       // Create SVM (Solana) wallet
       await connectSVMAccountWithSeedPhrase(

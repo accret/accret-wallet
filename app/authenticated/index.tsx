@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import {
   StyleSheet,
   Text,
@@ -10,13 +10,13 @@ import {
 } from "react-native";
 import { useTheme } from "@/theme";
 import { useRouter } from "expo-router";
+import { useFocusEffect } from "@react-navigation/native";
 import {
   useCurrentAccount,
   useCurrentSVMAccount,
   useCurrentEVMAccount,
   getAllAccountsInfo,
   switchAccount,
-  disconnectAccount,
 } from "@/lib/accountStorage";
 import { Ionicons } from "@expo/vector-icons";
 import * as Clipboard from "expo-clipboard";
@@ -68,6 +68,14 @@ export default function AuthenticatedIndex() {
     loadWalletData();
   }, []);
 
+  // Refresh data when the screen comes into focus
+  useFocusEffect(
+    useCallback(() => {
+      loadWalletData();
+      return () => {}; // cleanup function
+    }, []),
+  );
+
   // Handle pull-to-refresh
   const onRefresh = async () => {
     setRefreshing(true);
@@ -98,189 +106,218 @@ export default function AuthenticatedIndex() {
     if (walletId === currentWallet?.id) return;
 
     try {
+      // Show loading indicator
+      setRefreshing(true);
+
       await switchAccount(walletId);
+
+      // Force complete reload of wallet data to ensure UI is up to date
       await loadWalletData();
     } catch (error) {
       console.error("Failed to switch wallet:", error);
       Alert.alert("Error", "Failed to switch wallet");
+    } finally {
+      setRefreshing(false);
     }
   };
 
-  // Handle wallet removal
-  const handleRemoveWallet = (walletId: string, walletName: string) => {
-    Alert.alert(
-      "Remove Wallet",
-      `Are you sure you want to remove the wallet "${walletName}"? This action cannot be undone.`,
-      [
-        {
-          text: "Cancel",
-          style: "cancel",
-        },
-        {
-          text: "Remove",
-          style: "destructive",
-          onPress: async () => {
-            try {
-              await disconnectAccount(walletId);
+  // Navigate to account details
+  const navigateToAccountDetails = (walletId: string) => {
+    router.push(`/authenticated/(account)/account-details?id=${walletId}`);
+  };
 
-              // Check if there are any wallets left
-              const remainingAccounts = await getAllAccountsInfo();
+  // Navigate to account settings
+  const navigateToAccountSettings = () => {
+    router.push("/authenticated/(account)/account-settings");
+  };
 
-              if (remainingAccounts.length === 0) {
-                // If no wallets left, navigate back to home screen
-                router.replace("/");
-              } else {
-                // Otherwise, refresh the wallet list
-                await loadWalletData();
-              }
-            } catch (error) {
-              console.error("Failed to remove wallet:", error);
-              Alert.alert("Error", "Failed to remove wallet");
-            }
-          },
-        },
-      ],
-    );
+  // Get wallet initials
+  const getWalletInitials = (name: string) => {
+    return name
+      .split(" ")
+      .map((word) => word[0])
+      .join("")
+      .toUpperCase()
+      .substring(0, 2);
   };
 
   return (
-    <ScrollView
-      style={[styles.container, { backgroundColor: colors.background }]}
-      refreshControl={
-        <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-      }>
+    <View style={[styles.container, { backgroundColor: colors.background }]}>
       {/* Header */}
       <View style={styles.header}>
-        <Text style={[styles.headerTitle, { color: colors.text }]}>
-          My Wallet
-        </Text>
+        <Text style={[styles.headerTitle, { color: colors.text }]}>Wallet</Text>
+        <TouchableOpacity
+          style={[styles.profileButton, { backgroundColor: colors.primary }]}
+          onPress={navigateToAccountSettings}>
+          {currentWallet ? (
+            <Text style={styles.profileInitials}>
+              {getWalletInitials(currentWallet.name)}
+            </Text>
+          ) : (
+            <Ionicons name="person" size={20} color="white" />
+          )}
+        </TouchableOpacity>
       </View>
 
-      {/* Current Wallet Card */}
-      {currentWallet && (
-        <View
-          style={[
-            styles.card,
-            { backgroundColor: theme === "dark" ? colors.card : "#FFFFFF" },
-          ]}>
-          <View style={styles.cardHeader}>
-            <Text style={[styles.cardTitle, { color: colors.text }]}>
-              {currentWallet.name}
-            </Text>
-            <TouchableOpacity style={styles.moreButton}>
-              <Ionicons
-                name="ellipsis-horizontal"
-                size={20}
-                color={colors.text}
-              />
-            </TouchableOpacity>
-          </View>
-
-          <View style={styles.addressContainer}>
-            <View style={styles.networkContainer}>
-              <View
-                style={[
-                  styles.networkBadge,
-                  { backgroundColor: colors.primaryLight || "#E6F2FF" },
-                ]}>
-                <Text style={[styles.networkLabel, { color: colors.primary }]}>
-                  SVM
-                </Text>
-              </View>
-              <Text
-                style={[styles.addressText, { color: colors.secondaryText }]}>
-                {formatAddress(currentWallet.svmAddress)}
-              </Text>
-              <TouchableOpacity
-                style={styles.copyButton}
-                onPress={() => copyToClipboard(currentWallet.svmAddress)}>
-                <Ionicons
-                  name="copy-outline"
-                  size={16}
-                  color={colors.secondaryText}
-                />
-              </TouchableOpacity>
-            </View>
-
-            <View style={styles.networkContainer}>
-              <View
-                style={[
-                  styles.networkBadge,
-                  { backgroundColor: colors.primaryLight || "#E6F2FF" },
-                ]}>
-                <Text style={[styles.networkLabel, { color: colors.primary }]}>
-                  EVM
-                </Text>
-              </View>
-              <Text
-                style={[styles.addressText, { color: colors.secondaryText }]}>
-                {formatAddress(currentWallet.evmAddress)}
-              </Text>
-              <TouchableOpacity
-                style={styles.copyButton}
-                onPress={() => copyToClipboard(currentWallet.evmAddress)}>
-                <Ionicons
-                  name="copy-outline"
-                  size={16}
-                  color={colors.secondaryText}
-                />
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      )}
-
-      {/* Wallet List */}
-      <View style={styles.section}>
-        <Text style={[styles.sectionTitle, { color: colors.text }]}>
-          All Wallets ({allWallets.length})
-        </Text>
-
-        {allWallets.map((wallet) => (
+      <ScrollView
+        style={styles.scrollContainer}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+        }>
+        {/* Current Wallet Card */}
+        {currentWallet && (
           <View
-            key={wallet.id}
             style={[
-              styles.walletItem,
-              {
-                backgroundColor: theme === "dark" ? colors.card : "#FFFFFF",
-                borderColor:
-                  wallet.id === currentWallet?.id
-                    ? colors.primary
-                    : "transparent",
-              },
+              styles.card,
+              { backgroundColor: theme === "dark" ? colors.card : "#FFFFFF" },
             ]}>
-            <TouchableOpacity
-              style={styles.walletItemTouchable}
-              onPress={() => handleWalletSelect(wallet.id)}>
-              <Text style={[styles.walletName, { color: colors.text }]}>
-                {wallet.name}
+            <View style={styles.cardHeader}>
+              <Text style={[styles.cardTitle, { color: colors.text }]}>
+                {currentWallet.name}
               </Text>
-              <View style={styles.walletActions}>
-                {wallet.id === currentWallet?.id && (
-                  <View
-                    style={[
-                      styles.activeTag,
-                      { backgroundColor: colors.primary },
-                    ]}>
-                    <Text style={styles.activeTagText}>Active</Text>
-                  </View>
-                )}
+              <TouchableOpacity
+                style={styles.moreButton}
+                onPress={() => navigateToAccountDetails(currentWallet.id)}>
+                <Ionicons
+                  name="settings-outline"
+                  size={20}
+                  color={colors.text}
+                />
+              </TouchableOpacity>
+            </View>
 
+            <View style={styles.addressContainer}>
+              <View style={styles.networkContainer}>
+                <View
+                  style={[
+                    styles.networkBadge,
+                    { backgroundColor: colors.primaryLight || "#E6F2FF" },
+                  ]}>
+                  <Text
+                    style={[styles.networkLabel, { color: colors.primary }]}>
+                    SVM
+                  </Text>
+                </View>
+                <Text
+                  style={[styles.addressText, { color: colors.secondaryText }]}>
+                  {formatAddress(currentWallet.svmAddress)}
+                </Text>
                 <TouchableOpacity
-                  style={styles.removeButton}
-                  onPress={() => handleRemoveWallet(wallet.id, wallet.name)}>
+                  style={styles.copyButton}
+                  onPress={() => copyToClipboard(currentWallet.svmAddress)}>
                   <Ionicons
-                    name="trash-outline"
-                    size={18}
-                    color={colors.error}
+                    name="copy-outline"
+                    size={16}
+                    color={colors.secondaryText}
                   />
                 </TouchableOpacity>
               </View>
-            </TouchableOpacity>
+
+              <View style={styles.networkContainer}>
+                <View
+                  style={[
+                    styles.networkBadge,
+                    { backgroundColor: colors.primaryLight || "#E6F2FF" },
+                  ]}>
+                  <Text
+                    style={[styles.networkLabel, { color: colors.primary }]}>
+                    EVM
+                  </Text>
+                </View>
+                <Text
+                  style={[styles.addressText, { color: colors.secondaryText }]}>
+                  {formatAddress(currentWallet.evmAddress)}
+                </Text>
+                <TouchableOpacity
+                  style={styles.copyButton}
+                  onPress={() => copyToClipboard(currentWallet.evmAddress)}>
+                  <Ionicons
+                    name="copy-outline"
+                    size={16}
+                    color={colors.secondaryText}
+                  />
+                </TouchableOpacity>
+              </View>
+            </View>
           </View>
-        ))}
-      </View>
-    </ScrollView>
+        )}
+
+        {/* Wallet List */}
+        <View style={styles.section}>
+          <Text style={[styles.sectionTitle, { color: colors.text }]}>
+            All Wallets ({allWallets.length})
+          </Text>
+
+          {allWallets.map((wallet) => (
+            <TouchableOpacity
+              key={wallet.id}
+              style={[
+                styles.walletItem,
+                {
+                  backgroundColor: theme === "dark" ? colors.card : "#FFFFFF",
+                  borderColor:
+                    wallet.id === currentWallet?.id
+                      ? colors.primary
+                      : "transparent",
+                },
+              ]}
+              onPress={() => handleWalletSelect(wallet.id)}
+              activeOpacity={0.7}>
+              <View style={styles.walletItemContent}>
+                <View style={styles.walletNameContainer}>
+                  <View
+                    style={[
+                      styles.walletAvatar,
+                      {
+                        backgroundColor:
+                          wallet.id === currentWallet?.id
+                            ? colors.primary
+                            : colors.primaryLight || "#E6F2FF",
+                      },
+                    ]}>
+                    <Text
+                      style={[
+                        styles.walletAvatarText,
+                        {
+                          color:
+                            wallet.id === currentWallet?.id
+                              ? "white"
+                              : colors.primary,
+                        },
+                      ]}>
+                      {getWalletInitials(wallet.name)}
+                    </Text>
+                  </View>
+                  <Text style={[styles.walletName, { color: colors.text }]}>
+                    {wallet.name}
+                  </Text>
+                </View>
+                <View style={styles.walletActions}>
+                  {wallet.id === currentWallet?.id && (
+                    <View
+                      style={[
+                        styles.activeTag,
+                        { backgroundColor: colors.primary },
+                      ]}>
+                      <Text style={styles.activeTagText}>Active</Text>
+                    </View>
+                  )}
+                  <TouchableOpacity
+                    style={styles.detailsButton}
+                    onPress={() => navigateToAccountDetails(wallet.id)}>
+                    <Ionicons
+                      name="chevron-forward"
+                      size={20}
+                      color={colors.secondaryText}
+                    />
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </TouchableOpacity>
+          ))}
+        </View>
+      </ScrollView>
+    </View>
   );
 }
 
@@ -289,12 +326,30 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   header: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
     padding: 20,
     paddingBottom: 10,
   },
   headerTitle: {
     fontSize: 28,
     fontWeight: "700",
+  },
+  profileButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  profileInitials: {
+    color: "white",
+    fontSize: 16,
+    fontWeight: "600",
+  },
+  scrollContainer: {
+    flex: 1,
   },
   card: {
     marginHorizontal: 20,
@@ -318,7 +373,7 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
   moreButton: {
-    padding: 4,
+    padding: 6,
   },
   addressContainer: {
     gap: 12,
@@ -353,26 +408,40 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   walletItem: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    padding: 16,
     borderRadius: 12,
     marginBottom: 8,
     borderWidth: 1,
+    overflow: "hidden",
   },
-  walletItemTouchable: {
+  walletItemContent: {
     width: "100%",
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
+    padding: 16,
+  },
+  walletNameContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  walletAvatar: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    justifyContent: "center",
+    alignItems: "center",
+    marginRight: 12,
+  },
+  walletAvatarText: {
+    fontSize: 14,
+    fontWeight: "700",
   },
   walletActions: {
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
   },
-  removeButton: {
+  detailsButton: {
     padding: 4,
   },
   walletName: {

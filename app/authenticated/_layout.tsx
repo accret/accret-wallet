@@ -46,6 +46,20 @@ export default function AuthenticatedLayout() {
             headerLeft: () => null,
           }}
         />
+        <Stack.Screen
+          name="account-details"
+          options={{
+            headerShown: false,
+            gestureEnabled: true,
+          }}
+        />
+        <Stack.Screen
+          name="account-settings"
+          options={{
+            headerShown: false,
+            gestureEnabled: true,
+          }}
+        />
       </Stack>
     </SafeAreaView>
   );
