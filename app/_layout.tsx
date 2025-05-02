@@ -25,7 +25,15 @@ export default function RootLayout() {
     <ThemeProvider>
       <StatusBar style={colorScheme === "dark" ? "light" : "dark"} />
       <Stack>
-        <Stack.Screen name="index" options={{ headerShown: false }} />
+        <Stack.Screen
+          name="index"
+          options={{
+            headerShown: false,
+            gestureEnabled: false,
+            headerBackVisible: false,
+            headerLeft: () => null,
+          }}
+        />
         <Stack.Screen name="auth" options={{ headerShown: false }} />
         <Stack.Screen
           name="authenticated"
