@@ -19,8 +19,6 @@ import * as Haptics from "expo-haptics";
 import { useTheme } from "@/theme";
 import { StatusBar } from "expo-status-bar";
 import QRCode from "react-native-qrcode-svg";
-import { captureRef } from "react-native-view-shot";
-import * as Sharing from "expo-sharing";
 import {
   useCurrentSVMAccount,
   useCurrentEVMAccount,
@@ -107,32 +105,6 @@ export default function ReceiveScreen() {
     }
   };
 
-  const shareQRCode = async () => {
-    if (!qrCodeRef.current) return;
-
-    try {
-      const uri = await captureRef(qrCodeRef.current, {
-        format: "png",
-        quality: 1,
-      });
-
-      if (!(await Sharing.isAvailableAsync())) {
-        Alert.alert("Error", "Sharing is not available on this device");
-        return;
-      }
-
-      const chain = activeTab === "SVM" ? "Solana" : "Ethereum";
-      await Sharing.shareAsync(uri, {
-        mimeType: "image/png",
-        dialogTitle: `Share ${chain} Wallet Address QR Code`,
-      });
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    } catch (error) {
-      console.error("Failed to share QR code:", error);
-      Alert.alert("Error", "Failed to share QR code");
-    }
-  };
-
   const openQRModal = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setQrModalVisible(true);
@@ -140,14 +112,6 @@ export default function ReceiveScreen() {
 
   const closeQRModal = () => {
     setQrModalVisible(false);
-  };
-
-  const formatAddress = (address?: string) => {
-    if (!address) return "Not available";
-    if (address.length <= 20) return address; // Don't truncate short addresses
-    const start = address.substring(0, 14);
-    const end = address.substring(address.length - 4);
-    return `${start}...${end}`;
   };
 
   if (loading) {
@@ -341,7 +305,7 @@ export default function ReceiveScreen() {
               style={[styles.addressText, { color: colors.text }]}
               selectable={true}
               numberOfLines={2}>
-              {formatAddress(getCurrentAddress())}
+              {getCurrentAddress()}
             </Text>
           </View>
 
@@ -375,7 +339,7 @@ export default function ReceiveScreen() {
                   borderColor: colors.border,
                 },
               ]}
-              onPress={shareQRCode}
+              onPress={handleShare}
               disabled={!getCurrentAddress()}>
               <Ionicons
                 name="share-social-outline"
@@ -384,7 +348,7 @@ export default function ReceiveScreen() {
               />
               <Text
                 style={[styles.actionButtonText, { color: colors.primary }]}>
-                Share QR
+                Share
               </Text>
             </TouchableOpacity>
           </View>

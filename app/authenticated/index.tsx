@@ -169,7 +169,9 @@ export default function AuthenticatedIndex() {
         </TouchableOpacity>
 
         {/* Title (Center) */}
-        <Text style={[styles.headerTitle, { color: colors.text }]}>Wallet</Text>
+        <Text style={[styles.headerTitle, { color: colors.text }]}>
+          {currentWallet?.name || "Accret"}
+        </Text>
 
         {/* Action Buttons (Right) */}
         <View style={styles.headerActions}>
@@ -356,6 +358,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   header: {
+    gap: 10,
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
@@ -363,6 +366,7 @@ const styles = StyleSheet.create({
     paddingBottom: 10,
   },
   headerTitle: {
+    flex: 1,
     fontSize: 28,
     fontWeight: "700",
   },
