@@ -50,7 +50,7 @@ const darkColors: ColorPalette = {
   background: "#121212",
   surface: "#1E1E1E",
   primary: "#2E85FE",
-  primaryLight: "",
+  primaryLight: "#182F4F",
   text: "#FFFFFF",
   secondaryText: "#AAAAAA",
   tertiaryText: "#777777",
@@ -61,7 +61,7 @@ const darkColors: ColorPalette = {
   inputBackground: "#2A2A2A",
   disabledButton: "#444444",
   icon: "#2E85FE",
-  networkBadge: "",
+  networkBadge: "#182F4F",
   actionIcon: "#2E85FE",
 };
 

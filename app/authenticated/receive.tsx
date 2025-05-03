@@ -158,10 +158,7 @@ export default function ReceiveScreen() {
 
       <ScrollView style={styles.content}>
         <View
-          style={[
-            styles.infoBox,
-            { backgroundColor: colors.primaryLight || "#E6F2FF" },
-          ]}>
+          style={[styles.infoBox, { backgroundColor: colors.primaryLight }]}>
           <Ionicons
             name="information-circle-outline"
             size={24}
@@ -224,7 +221,7 @@ export default function ReceiveScreen() {
           <View
             style={[
               styles.networkBadge,
-              { backgroundColor: colors.primaryLight || "#E6F2FF" },
+              { backgroundColor: colors.primaryLight },
             ]}>
             <View
               style={[styles.networkDot, { backgroundColor: colors.primary }]}
@@ -314,7 +311,7 @@ export default function ReceiveScreen() {
               style={[
                 styles.actionButton,
                 {
-                  backgroundColor: colors.primaryLight || "#E6F2FF",
+                  backgroundColor: colors.primaryLight,
                   borderColor: colors.border,
                 },
               ]}
@@ -335,7 +332,7 @@ export default function ReceiveScreen() {
               style={[
                 styles.actionButton,
                 {
-                  backgroundColor: colors.primaryLight || "#E6F2FF",
+                  backgroundColor: colors.primaryLight,
                   borderColor: colors.border,
                 },
               ]}

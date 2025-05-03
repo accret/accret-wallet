@@ -373,7 +373,7 @@ export default function AccountDetails() {
                     {
                       backgroundColor: showSeedPhrase
                         ? colors.error
-                        : colors.primaryLight || "#E6F2FF",
+                        : colors.primaryLight,
                     },
                   ]}
                   onPress={
@@ -511,7 +511,7 @@ export default function AccountDetails() {
                       {
                         backgroundColor: showSVMPrivateKey
                           ? colors.error
-                          : colors.primaryLight || "#E6F2FF",
+                          : colors.primaryLight,
                       },
                     ]}
                     onPress={
@@ -632,7 +632,7 @@ export default function AccountDetails() {
                       {
                         backgroundColor: showEVMPrivateKey
                           ? colors.error
-                          : colors.primaryLight || "#E6F2FF",
+                          : colors.primaryLight,
                       },
                     ]}
                     onPress={

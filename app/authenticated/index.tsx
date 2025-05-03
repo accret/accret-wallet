@@ -176,14 +176,17 @@ export default function AuthenticatedIndex() {
         {/* Action Buttons (Right) */}
         <View style={styles.headerActions}>
           <TouchableOpacity
-            style={[styles.headerButton, { backgroundColor: colors.primary }]}
+            style={[
+              styles.headerButton,
+              { backgroundColor: colors.primaryLight },
+            ]}
             onPress={navigateToCamera}>
             <Ionicons name="scan-outline" size={20} color="white" />
           </TouchableOpacity>
           <TouchableOpacity
             style={[
               styles.headerButton,
-              { backgroundColor: colors.primary, marginLeft: 10 },
+              { backgroundColor: colors.primaryLight, marginLeft: 10 },
             ]}
             onPress={navigateToReceive}>
             <Ionicons name="qr-code-outline" size={20} color="white" />
@@ -223,7 +226,7 @@ export default function AuthenticatedIndex() {
                 <View
                   style={[
                     styles.networkBadge,
-                    { backgroundColor: colors.primaryLight || "#E6F2FF" },
+                    { backgroundColor: colors.primaryLight },
                   ]}>
                   <Text
                     style={[styles.networkLabel, { color: colors.primary }]}>
@@ -249,7 +252,7 @@ export default function AuthenticatedIndex() {
                 <View
                   style={[
                     styles.networkBadge,
-                    { backgroundColor: colors.primaryLight || "#E6F2FF" },
+                    { backgroundColor: colors.primaryLight },
                   ]}>
                   <Text
                     style={[styles.networkLabel, { color: colors.primary }]}>
@@ -304,7 +307,7 @@ export default function AuthenticatedIndex() {
                         backgroundColor:
                           wallet.id === currentWallet?.id
                             ? colors.primary
-                            : colors.primaryLight || "#E6F2FF",
+                            : colors.primaryLight,
                       },
                     ]}>
                     <Text

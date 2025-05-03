@@ -189,7 +189,7 @@ export default function AccountSettings() {
                       backgroundColor:
                         account.userAccountID === currentAccount?.userAccountID
                           ? colors.primary
-                          : colors.primaryLight || "#E6F2FF",
+                          : colors.primaryLight,
                     },
                   ]}>
                   <Text
@@ -227,7 +227,7 @@ export default function AccountSettings() {
                         style={[
                           styles.chainTag,
                           {
-                            backgroundColor: colors.primaryLight || "#E6F2FF",
+                            backgroundColor: colors.primaryLight,
                           },
                         ]}>
                         <Text
@@ -244,7 +244,7 @@ export default function AccountSettings() {
                         style={[
                           styles.chainTag,
                           {
-                            backgroundColor: colors.primaryLight || "#E6F2FF",
+                            backgroundColor: colors.primaryLight,
                           },
                         ]}>
                         <Text
@@ -287,7 +287,7 @@ export default function AccountSettings() {
               <View
                 style={[
                   styles.addAccountIcon,
-                  { backgroundColor: colors.primaryLight || "#E6F2FF" },
+                  { backgroundColor: colors.primaryLight },
                 ]}>
                 <Ionicons name="add" size={24} color={colors.primary} />
               </View>
