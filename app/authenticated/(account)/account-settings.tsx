@@ -16,7 +16,6 @@ import {
   useCurrentAccount,
   getAllAccounts,
   switchAccount,
-  disconnectAccount,
   disconnectAllAccounts,
 } from "@/lib/accountStorage";
 import type { AccountStorage } from "@/types/accountStorage";
@@ -67,42 +66,6 @@ export default function AccountSettings() {
       console.error("Failed to switch account:", error);
       Alert.alert("Error", "Failed to switch account");
     }
-  };
-
-  const handleRemoveAccount = (account: AccountStorage) => {
-    Alert.alert(
-      "Remove Account",
-      `Are you sure you want to remove "${account.userAccountName}"? This action cannot be undone.`,
-      [
-        {
-          text: "Cancel",
-          style: "cancel",
-        },
-        {
-          text: "Remove",
-          style: "destructive",
-          onPress: async () => {
-            try {
-              await disconnectAccount(account.userAccountID);
-
-              // Reload accounts after removal
-              const remainingAccounts = await getAllAccounts();
-
-              if (remainingAccounts.length === 0) {
-                // If no accounts left, go back to welcome screen
-                router.replace("/");
-              } else {
-                // Otherwise reload the list
-                loadAccounts();
-              }
-            } catch (error) {
-              console.error("Failed to remove account:", error);
-              Alert.alert("Error", "Failed to remove account");
-            }
-          },
-        },
-      ],
-    );
   };
 
   const handleAddAccount = () => {
@@ -217,7 +180,7 @@ export default function AccountSettings() {
             <TouchableOpacity
               key={account.userAccountID}
               style={styles.accountItem}
-              onPress={() => navigateToAccountDetails(account.userAccountID)}>
+              onPress={() => handleAccountSelect(account.userAccountID)}>
               <View style={styles.accountItemContent}>
                 <View
                   style={[
@@ -297,33 +260,19 @@ export default function AccountSettings() {
                 </View>
 
                 <View style={styles.accountActions}>
-                  {account.userAccountID !== currentAccount?.userAccountID && (
-                    <TouchableOpacity
-                      style={[
-                        styles.actionButton,
-                        { backgroundColor: colors.primaryLight || "#E6F2FF" },
-                      ]}
-                      onPress={() =>
-                        handleAccountSelect(account.userAccountID)
-                      }>
-                      <Ionicons
-                        name="checkmark"
-                        size={18}
-                        color={colors.primary}
-                      />
-                    </TouchableOpacity>
-                  )}
-
+                  {/* Details button */}
                   <TouchableOpacity
                     style={[
                       styles.actionButton,
-                      { backgroundColor: "rgba(255, 59, 48, 0.1)" },
+                      { backgroundColor: colors.primaryLight },
                     ]}
-                    onPress={() => handleRemoveAccount(account)}>
+                    onPress={() =>
+                      navigateToAccountDetails(account.userAccountID)
+                    }>
                     <Ionicons
-                      name="trash-outline"
+                      name="chevron-forward"
                       size={18}
-                      color={colors.error}
+                      color={colors.secondaryText}
                     />
                   </TouchableOpacity>
                 </View>
