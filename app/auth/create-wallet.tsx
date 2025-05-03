@@ -7,6 +7,7 @@ import {
   Alert,
   ScrollView,
   Platform,
+  ActivityIndicator,
 } from "react-native";
 import { useTheme } from "@/theme";
 import { useRouter } from "expo-router";
@@ -218,6 +219,23 @@ export default function CreateWallet() {
           </Text>
         </TouchableOpacity>
       </View>
+
+      {/* Simple Loading Overlay */}
+      {isCreating && (
+        <View
+          style={[
+            styles.loadingOverlay,
+            {
+              backgroundColor:
+                theme === "dark" ? "rgba(0,0,0,0.7)" : "rgba(255,255,255,0.7)",
+            },
+          ]}>
+          <ActivityIndicator size="large" color={colors.primary} />
+          <Text style={[styles.loadingText, { color: colors.text }]}>
+            Creating wallet...
+          </Text>
+        </View>
+      )}
     </View>
   );
 }
@@ -331,5 +349,20 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: "600",
     color: "#FFFFFF",
+  },
+  loadingOverlay: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    justifyContent: "center",
+    alignItems: "center",
+    zIndex: 1000,
+  },
+  loadingText: {
+    marginTop: 16,
+    fontSize: 18,
+    fontWeight: "600",
   },
 });
