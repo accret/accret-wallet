@@ -131,6 +131,16 @@ export default function AuthenticatedIndex() {
     router.push("/authenticated/(account)/account-settings");
   };
 
+  // Navigate to camera screen
+  const navigateToCamera = () => {
+    router.push("/authenticated/camera");
+  };
+
+  // Navigate to receive screen
+  const navigateToReceive = () => {
+    router.push("/authenticated/receive");
+  };
+
   // Get wallet initials
   const getWalletInitials = (name: string) => {
     return name
@@ -145,18 +155,38 @@ export default function AuthenticatedIndex() {
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       {/* Header */}
       <View style={styles.header}>
-        <Text style={[styles.headerTitle, { color: colors.text }]}>Wallet</Text>
+        {/* Account Button (Left) */}
         <TouchableOpacity
-          style={[styles.profileButton, { backgroundColor: colors.primary }]}
+          style={[styles.headerButton, { backgroundColor: colors.primary }]}
           onPress={navigateToAccountSettings}>
           {currentWallet ? (
-            <Text style={styles.profileInitials}>
+            <Text style={styles.headerButtonText}>
               {getWalletInitials(currentWallet.name)}
             </Text>
           ) : (
             <Ionicons name="person" size={20} color="white" />
           )}
         </TouchableOpacity>
+
+        {/* Title (Center) */}
+        <Text style={[styles.headerTitle, { color: colors.text }]}>Wallet</Text>
+
+        {/* Action Buttons (Right) */}
+        <View style={styles.headerActions}>
+          <TouchableOpacity
+            style={[styles.headerButton, { backgroundColor: colors.primary }]}
+            onPress={navigateToCamera}>
+            <Ionicons name="scan-outline" size={20} color="white" />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[
+              styles.headerButton,
+              { backgroundColor: colors.primary, marginLeft: 10 },
+            ]}
+            onPress={navigateToReceive}>
+            <Ionicons name="qr-code-outline" size={20} color="white" />
+          </TouchableOpacity>
+        </View>
       </View>
 
       <ScrollView
@@ -336,17 +366,21 @@ const styles = StyleSheet.create({
     fontSize: 28,
     fontWeight: "700",
   },
-  profileButton: {
+  headerButton: {
     width: 40,
     height: 40,
     borderRadius: 20,
     justifyContent: "center",
     alignItems: "center",
   },
-  profileInitials: {
+  headerButtonText: {
     color: "white",
     fontSize: 16,
     fontWeight: "600",
+  },
+  headerActions: {
+    flexDirection: "row",
+    alignItems: "center",
   },
   scrollContainer: {
     flex: 1,

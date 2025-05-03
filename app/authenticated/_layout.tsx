@@ -40,6 +40,21 @@ export default function AuthenticatedLayout() {
           }}
         />
         <Stack.Screen
+          name="camera"
+          options={{
+            headerShown: false,
+            gestureEnabled: true,
+            presentation: "modal",
+          }}
+        />
+        <Stack.Screen
+          name="receive"
+          options={{
+            headerShown: false,
+            gestureEnabled: true,
+          }}
+        />
+        <Stack.Screen
           name="(account)"
           options={{
             headerShown: false,
