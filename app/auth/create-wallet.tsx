@@ -101,6 +101,134 @@ export default function CreateWallet() {
     }
   };
 
+  const styles = StyleSheet.create({
+    container: {
+      flex: 1,
+    },
+    header: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      paddingHorizontal: 16,
+      paddingTop: Platform.OS === "ios" ? 0 : 12,
+      height: 50,
+    },
+    backButton: {
+      padding: 8,
+    },
+    headerTitle: {
+      fontSize: 18,
+      fontWeight: "600",
+    },
+    emptySpace: {
+      width: 40,
+    },
+    scrollContainer: {
+      padding: 20,
+      paddingBottom: 100,
+    },
+    warningBox: {
+      backgroundColor:
+        theme === "dark" ? "rgba(255, 59, 48, 0.15)" : "rgba(255, 59, 48, 0.1)",
+      borderRadius: 8,
+      padding: 16,
+      marginBottom: 24,
+    },
+    warningTitle: {
+      fontSize: 20,
+      fontWeight: "bold",
+      textAlign: "center",
+      marginBottom: 8,
+      color: colors.error,
+    },
+    warningText: {
+      fontSize: 16,
+      textAlign: "center",
+      lineHeight: 22,
+      color: colors.error,
+    },
+    sectionTitle: {
+      fontSize: 20,
+      fontWeight: "bold",
+      textAlign: "center",
+      marginBottom: 16,
+    },
+    gridContainer: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      marginBottom: 24,
+    },
+    column: {
+      width: "48%",
+    },
+    wordContainer: {
+      flexDirection: "row",
+      alignItems: "center",
+      borderRadius: 30,
+      paddingVertical: 12,
+      paddingHorizontal: 16,
+      marginBottom: 12,
+    },
+    wordIndex: {
+      marginRight: 8,
+      width: 20,
+      fontSize: 16,
+    },
+    word: {
+      fontSize: 16,
+      fontWeight: "500",
+    },
+    actionButton: {
+      flexDirection: "row",
+      height: 56,
+      borderRadius: 28,
+      justifyContent: "center",
+      alignItems: "center",
+      marginBottom: 16,
+    },
+    buttonIcon: {
+      marginRight: 8,
+    },
+    actionButtonText: {
+      fontSize: 16,
+      fontWeight: "600",
+    },
+    buttonContainer: {
+      position: "absolute",
+      bottom: 0,
+      left: 0,
+      right: 0,
+      padding: 20,
+      backgroundColor: "transparent",
+    },
+    continueButton: {
+      height: 56,
+      borderRadius: 28,
+      justifyContent: "center",
+      alignItems: "center",
+    },
+    continueButtonText: {
+      fontSize: 18,
+      fontWeight: "600",
+      color: "#FFFFFF",
+    },
+    loadingOverlay: {
+      position: "absolute",
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      justifyContent: "center",
+      alignItems: "center",
+      zIndex: 1000,
+    },
+    loadingText: {
+      marginTop: 16,
+      fontSize: 18,
+      fontWeight: "600",
+    },
+  });
+
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <View style={styles.header}>
@@ -239,130 +367,3 @@ export default function CreateWallet() {
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: 16,
-    paddingTop: Platform.OS === "ios" ? 0 : 12,
-    height: 50,
-  },
-  backButton: {
-    padding: 8,
-  },
-  headerTitle: {
-    fontSize: 18,
-    fontWeight: "600",
-  },
-  emptySpace: {
-    width: 40,
-  },
-  scrollContainer: {
-    padding: 20,
-    paddingBottom: 100,
-  },
-  warningBox: {
-    backgroundColor: "rgba(255, 59, 48, 0.1)",
-    borderRadius: 8,
-    padding: 16,
-    marginBottom: 24,
-  },
-  warningTitle: {
-    fontSize: 20,
-    fontWeight: "bold",
-    textAlign: "center",
-    marginBottom: 8,
-    color: "#FF3B30",
-  },
-  warningText: {
-    fontSize: 16,
-    textAlign: "center",
-    lineHeight: 22,
-    color: "#FF3B30",
-  },
-  sectionTitle: {
-    fontSize: 20,
-    fontWeight: "bold",
-    textAlign: "center",
-    marginBottom: 16,
-  },
-  gridContainer: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    marginBottom: 24,
-  },
-  column: {
-    width: "48%",
-  },
-  wordContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-    borderRadius: 30,
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    marginBottom: 12,
-  },
-  wordIndex: {
-    marginRight: 8,
-    width: 20,
-    fontSize: 16,
-  },
-  word: {
-    fontSize: 16,
-    fontWeight: "500",
-  },
-  actionButton: {
-    flexDirection: "row",
-    height: 56,
-    borderRadius: 28,
-    justifyContent: "center",
-    alignItems: "center",
-    marginBottom: 16,
-  },
-  buttonIcon: {
-    marginRight: 8,
-  },
-  actionButtonText: {
-    fontSize: 16,
-    fontWeight: "600",
-  },
-  buttonContainer: {
-    position: "absolute",
-    bottom: 0,
-    left: 0,
-    right: 0,
-    padding: 20,
-    backgroundColor: "transparent",
-  },
-  continueButton: {
-    height: 56,
-    borderRadius: 28,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  continueButtonText: {
-    fontSize: 18,
-    fontWeight: "600",
-    color: "#FFFFFF",
-  },
-  loadingOverlay: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    justifyContent: "center",
-    alignItems: "center",
-    zIndex: 1000,
-  },
-  loadingText: {
-    marginTop: 16,
-    fontSize: 18,
-    fontWeight: "600",
-  },
-});

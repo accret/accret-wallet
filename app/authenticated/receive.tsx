@@ -91,6 +91,7 @@ export default function ReceiveScreen() {
   };
 
   const handleShare = async () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     const address = getCurrentAddress();
     if (address) {
       try {
@@ -98,7 +99,6 @@ export default function ReceiveScreen() {
         await Share.share({
           message: `My ${chain} wallet address: ${address}`,
         });
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       } catch (error) {
         console.error("Error sharing address:", error);
       }
@@ -111,7 +111,13 @@ export default function ReceiveScreen() {
   };
 
   const closeQRModal = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setQrModalVisible(false);
+  };
+
+  const handleTabChange = (tab: "SVM" | "EVM") => {
+    Haptics.selectionAsync();
+    setActiveTab(tab);
   };
 
   if (loading) {
@@ -184,7 +190,7 @@ export default function ReceiveScreen() {
                 { backgroundColor: colors.primary },
               ],
             ]}
-            onPress={() => setActiveTab("SVM")}>
+            onPress={() => handleTabChange("SVM")}>
             <Text
               style={[
                 styles.tabOptionText,
@@ -204,7 +210,7 @@ export default function ReceiveScreen() {
                 { backgroundColor: colors.primary },
               ],
             ]}
-            onPress={() => setActiveTab("EVM")}>
+            onPress={() => handleTabChange("EVM")}>
             <Text
               style={[
                 styles.tabOptionText,
@@ -311,8 +317,10 @@ export default function ReceiveScreen() {
               style={[
                 styles.actionButton,
                 {
-                  backgroundColor: colors.primaryLight,
-                  borderColor: colors.border,
+                  backgroundColor: copied
+                    ? colors.success
+                    : colors.primaryLight,
+                  borderColor: copied ? colors.success : colors.border,
                 },
               ]}
               onPress={handleCopyAddress}
@@ -320,10 +328,13 @@ export default function ReceiveScreen() {
               <Ionicons
                 name={copied ? "checkmark" : "copy-outline"}
                 size={18}
-                color={colors.primary}
+                color={copied ? "white" : colors.primary}
               />
               <Text
-                style={[styles.actionButtonText, { color: colors.primary }]}>
+                style={[
+                  styles.actionButtonText,
+                  { color: copied ? "white" : colors.primary },
+                ]}>
                 {copied ? "Copied!" : "Copy"}
               </Text>
             </TouchableOpacity>

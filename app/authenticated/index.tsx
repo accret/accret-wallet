@@ -20,6 +20,7 @@ import {
 } from "@/lib/accountStorage";
 import { Ionicons } from "@expo/vector-icons";
 import * as Clipboard from "expo-clipboard";
+import * as Haptics from "expo-haptics";
 
 type WalletInfo = {
   id: string;
@@ -34,6 +35,7 @@ export default function AuthenticatedIndex() {
   const [currentWallet, setCurrentWallet] = useState<WalletInfo | null>(null);
   const [allWallets, setAllWallets] = useState<WalletInfo[]>([]);
   const [refreshing, setRefreshing] = useState(false);
+  const [copiedAddress, setCopiedAddress] = useState<string | null>(null);
 
   // Fetch wallet information
   const loadWalletData = async () => {
@@ -89,13 +91,24 @@ export default function AuthenticatedIndex() {
     return `${address.substring(0, 6)}...${address.substring(address.length - 4)}`;
   };
 
-  // Copy address to clipboard
-  const copyToClipboard = async (text?: string) => {
+  // Copy address to clipboard with haptic feedback
+  const copyToClipboard = async (
+    text?: string,
+    networkType?: "SVM" | "EVM",
+  ) => {
     if (!text) return;
 
     try {
       await Clipboard.setStringAsync(text);
-      Alert.alert("Copied", "Address copied to clipboard");
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+
+      // Set the copied address ID for visual feedback
+      setCopiedAddress(`${networkType}-${text}`);
+
+      // Reset the copied state after 2 seconds
+      setTimeout(() => {
+        setCopiedAddress(null);
+      }, 2000);
     } catch (error) {
       console.error("Failed to copy:", error);
     }
@@ -133,11 +146,13 @@ export default function AuthenticatedIndex() {
 
   // Navigate to camera screen
   const navigateToCamera = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     router.push("/authenticated/camera");
   };
 
   // Navigate to receive screen
   const navigateToReceive = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     router.push("/authenticated/receive");
   };
 
@@ -239,12 +254,22 @@ export default function AuthenticatedIndex() {
                 </Text>
                 <TouchableOpacity
                   style={styles.copyButton}
-                  onPress={() => copyToClipboard(currentWallet.svmAddress)}>
-                  <Ionicons
-                    name="copy-outline"
-                    size={16}
-                    color={colors.secondaryText}
-                  />
+                  onPress={() =>
+                    copyToClipboard(currentWallet.svmAddress, "SVM")
+                  }>
+                  {copiedAddress === `SVM-${currentWallet.svmAddress}` ? (
+                    <Ionicons
+                      name="checkmark"
+                      size={16}
+                      color={colors.success}
+                    />
+                  ) : (
+                    <Ionicons
+                      name="copy-outline"
+                      size={16}
+                      color={colors.secondaryText}
+                    />
+                  )}
                 </TouchableOpacity>
               </View>
 
@@ -265,12 +290,22 @@ export default function AuthenticatedIndex() {
                 </Text>
                 <TouchableOpacity
                   style={styles.copyButton}
-                  onPress={() => copyToClipboard(currentWallet.evmAddress)}>
-                  <Ionicons
-                    name="copy-outline"
-                    size={16}
-                    color={colors.secondaryText}
-                  />
+                  onPress={() =>
+                    copyToClipboard(currentWallet.evmAddress, "EVM")
+                  }>
+                  {copiedAddress === `EVM-${currentWallet.evmAddress}` ? (
+                    <Ionicons
+                      name="checkmark"
+                      size={16}
+                      color={colors.success}
+                    />
+                  ) : (
+                    <Ionicons
+                      name="copy-outline"
+                      size={16}
+                      color={colors.secondaryText}
+                    />
+                  )}
                 </TouchableOpacity>
               </View>
             </View>

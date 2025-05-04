@@ -14,6 +14,7 @@ import { useRouter, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect } from "@react-navigation/native";
 import * as Clipboard from "expo-clipboard";
+import * as Haptics from "expo-haptics";
 import {
   getAccountById,
   saveAccountName,
@@ -43,6 +44,9 @@ export default function AccountDetails() {
   const [showSeedPhrase, setShowSeedPhrase] = useState(false);
   const [showSVMPrivateKey, setShowSVMPrivateKey] = useState(false);
   const [showEVMPrivateKey, setShowEVMPrivateKey] = useState(false);
+  const [copiedItems, setCopiedItems] = useState<{ [key: string]: boolean }>(
+    {},
+  );
 
   useEffect(() => {
     loadAccountData();
@@ -216,10 +220,45 @@ export default function AccountDetails() {
   const copyToClipboard = async (text: string, label: string) => {
     try {
       await Clipboard.setStringAsync(text);
-      Alert.alert("Copied", `${label} copied to clipboard`);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+
+      // Set the copied state for this specific item
+      setCopiedItems((prev) => ({ ...prev, [label]: true }));
+
+      // Reset the copied state after 2 seconds
+      setTimeout(() => {
+        setCopiedItems((prev) => ({ ...prev, [label]: false }));
+      }, 2000);
     } catch (error) {
       console.error("Failed to copy:", error);
       Alert.alert("Error", "Failed to copy to clipboard");
+    }
+  };
+
+  const handleToggleSVMPrivateKey = () => {
+    if (showSVMPrivateKey) {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      setShowSVMPrivateKey(false);
+    } else {
+      showSVMPrivateKeyConfirmation();
+    }
+  };
+
+  const handleToggleEVMPrivateKey = () => {
+    if (showEVMPrivateKey) {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      setShowEVMPrivateKey(false);
+    } else {
+      showEVMPrivateKeyConfirmation();
+    }
+  };
+
+  const handleToggleSeedPhrase = () => {
+    if (showSeedPhrase) {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      setShowSeedPhrase(false);
+    } else {
+      showSeedPhraseConfirmation();
     }
   };
 
@@ -376,11 +415,7 @@ export default function AccountDetails() {
                         : colors.primaryLight,
                     },
                   ]}
-                  onPress={
-                    showSeedPhrase
-                      ? () => setShowSeedPhrase(false)
-                      : showSeedPhraseConfirmation
-                  }>
+                  onPress={handleToggleSeedPhrase}>
                   <Ionicons
                     name={showSeedPhrase ? "eye-off" : "eye"}
                     size={18}
@@ -425,7 +460,11 @@ export default function AccountDetails() {
                     <TouchableOpacity
                       style={[
                         styles.copyButton,
-                        { backgroundColor: colors.primary },
+                        {
+                          backgroundColor: copiedItems["seedPhrase"]
+                            ? colors.success
+                            : colors.primary,
+                        },
                       ]}
                       onPress={() =>
                         copyToClipboard(
@@ -434,12 +473,22 @@ export default function AccountDetails() {
                             evmAccount?.seedPhrase ||
                             []
                           ).join(" "),
-                          "Seed phrase",
+                          "seedPhrase",
                         )
                       }>
-                      <Ionicons name="copy-outline" size={18} color="white" />
+                      <Ionicons
+                        name={
+                          copiedItems["seedPhrase"]
+                            ? "checkmark"
+                            : "copy-outline"
+                        }
+                        size={18}
+                        color="white"
+                      />
                       <Text style={styles.copyButtonText}>
-                        Copy to Clipboard
+                        {copiedItems["seedPhrase"]
+                          ? "Copied!"
+                          : "Copy to Clipboard"}
                       </Text>
                     </TouchableOpacity>
                   </View>
@@ -475,14 +524,22 @@ export default function AccountDetails() {
                     onPress={() =>
                       copyToClipboard(
                         svmAccount.publicKey.toString(),
-                        "SVM public address",
+                        "svmPublicAddress",
                       )
                     }>
-                    <Ionicons
-                      name="copy-outline"
-                      size={16}
-                      color={colors.primary}
-                    />
+                    {copiedItems["svmPublicAddress"] ? (
+                      <Ionicons
+                        name="checkmark"
+                        size={16}
+                        color={colors.success}
+                      />
+                    ) : (
+                      <Ionicons
+                        name="copy-outline"
+                        size={16}
+                        color={colors.primary}
+                      />
+                    )}
                   </TouchableOpacity>
                 </View>
               </View>
@@ -514,11 +571,7 @@ export default function AccountDetails() {
                           : colors.primaryLight,
                       },
                     ]}
-                    onPress={
-                      showSVMPrivateKey
-                        ? () => setShowSVMPrivateKey(false)
-                        : showSVMPrivateKeyConfirmation
-                    }>
+                    onPress={handleToggleSVMPrivateKey}>
                     <Ionicons
                       name={showSVMPrivateKey ? "eye-off" : "eye"}
                       size={18}
@@ -545,17 +598,28 @@ export default function AccountDetails() {
                     <TouchableOpacity
                       style={[
                         styles.copyButton,
-                        { backgroundColor: colors.primary },
+                        {
+                          backgroundColor: copiedItems["svmPrivateKey"]
+                            ? colors.success
+                            : colors.primary,
+                        },
                       ]}
                       onPress={() =>
-                        copyToClipboard(
-                          svmAccount.privateKey,
-                          "SVM private key",
-                        )
+                        copyToClipboard(svmAccount.privateKey, "svmPrivateKey")
                       }>
-                      <Ionicons name="copy-outline" size={18} color="white" />
+                      <Ionicons
+                        name={
+                          copiedItems["svmPrivateKey"]
+                            ? "checkmark"
+                            : "copy-outline"
+                        }
+                        size={18}
+                        color="white"
+                      />
                       <Text style={styles.copyButtonText}>
-                        Copy to Clipboard
+                        {copiedItems["svmPrivateKey"]
+                          ? "Copied!"
+                          : "Copy to Clipboard"}
                       </Text>
                     </TouchableOpacity>
                   </View>
@@ -594,16 +658,21 @@ export default function AccountDetails() {
                   <TouchableOpacity
                     style={styles.copyIconButton}
                     onPress={() =>
-                      copyToClipboard(
-                        evmAccount.publicKey,
-                        "EVM public address",
-                      )
+                      copyToClipboard(evmAccount.publicKey, "evmPublicAddress")
                     }>
-                    <Ionicons
-                      name="copy-outline"
-                      size={16}
-                      color={colors.primary}
-                    />
+                    {copiedItems["evmPublicAddress"] ? (
+                      <Ionicons
+                        name="checkmark"
+                        size={16}
+                        color={colors.success}
+                      />
+                    ) : (
+                      <Ionicons
+                        name="copy-outline"
+                        size={16}
+                        color={colors.primary}
+                      />
+                    )}
                   </TouchableOpacity>
                 </View>
               </View>
@@ -635,11 +704,7 @@ export default function AccountDetails() {
                           : colors.primaryLight,
                       },
                     ]}
-                    onPress={
-                      showEVMPrivateKey
-                        ? () => setShowEVMPrivateKey(false)
-                        : showEVMPrivateKeyConfirmation
-                    }>
+                    onPress={handleToggleEVMPrivateKey}>
                     <Ionicons
                       name={showEVMPrivateKey ? "eye-off" : "eye"}
                       size={18}
@@ -666,17 +731,28 @@ export default function AccountDetails() {
                     <TouchableOpacity
                       style={[
                         styles.copyButton,
-                        { backgroundColor: colors.primary },
+                        {
+                          backgroundColor: copiedItems["evmPrivateKey"]
+                            ? colors.success
+                            : colors.primary,
+                        },
                       ]}
                       onPress={() =>
-                        copyToClipboard(
-                          evmAccount.privateKey,
-                          "EVM private key",
-                        )
+                        copyToClipboard(evmAccount.privateKey, "evmPrivateKey")
                       }>
-                      <Ionicons name="copy-outline" size={18} color="white" />
+                      <Ionicons
+                        name={
+                          copiedItems["evmPrivateKey"]
+                            ? "checkmark"
+                            : "copy-outline"
+                        }
+                        size={18}
+                        color="white"
+                      />
                       <Text style={styles.copyButtonText}>
-                        Copy to Clipboard
+                        {copiedItems["evmPrivateKey"]
+                          ? "Copied!"
+                          : "Copy to Clipboard"}
                       </Text>
                     </TouchableOpacity>
                   </View>
