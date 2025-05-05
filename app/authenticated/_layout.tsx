@@ -32,7 +32,7 @@ export default function AuthenticatedLayout() {
           gestureEnabled: false,
         }}>
         <Stack.Screen
-          name="index"
+          name="(tabs)"
           options={{
             headerShown: false,
             gestureEnabled: false,
