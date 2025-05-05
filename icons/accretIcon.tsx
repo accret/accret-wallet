@@ -2,15 +2,15 @@ import React from "react";
 import { useTheme } from "@/theme";
 import Svg, { Path, Rect } from "react-native-svg";
 
-interface AccretLogoProps {
+interface AccretIconProps {
   width?: number;
   height?: number;
 }
 
-export default function AccretLogo({
+export default function AccretIcon({
   width = 196,
   height = 196,
-}: AccretLogoProps) {
+}: AccretIconProps) {
   const { theme } = useTheme();
   const isDarkMode = theme === "dark";
 

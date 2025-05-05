@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback } from "react";
-import AccretLogo from "@/logo";
+import { AccretIcon } from "@/icons";
 import { useTheme } from "@/theme";
 import { useRouter } from "expo-router";
 import * as WebBrowser from "expo-web-browser";
@@ -83,7 +83,7 @@ export default function Index() {
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <View style={styles.logoContainer}>
-        <AccretLogo width={196} height={196} />
+        <AccretIcon width={196} height={196} />
         <Text style={[styles.title, { color: colors.text }]}>
           Welcome to Accret
         </Text>

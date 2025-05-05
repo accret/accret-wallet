@@ -13,12 +13,12 @@ interface TokenPriceError {
 
 export type TokenPriceResponse = TokenPriceSuccess | TokenPriceError;
 
-export type ChainId =
-  | "solana:101"
-  | "eip155:1"
-  | "eip155:137"
-  | "eip155:8453"
-  | "eip155:42161";
+type ChainId =
+  | "solana:101" // Solana Mainnet
+  | "eip155:1" // Ethereum Mainnet
+  | "eip155:137" // Polygon Mainnet
+  | "eip155:8453" // Base Mainnet
+  | "eip155:42161"; // Arbitrum Mainnet
 
 export default async function fetchTokenPrice(
   network: ChainId,

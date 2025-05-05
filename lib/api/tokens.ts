@@ -3,11 +3,11 @@ import { TokensResponse } from "@/types/tokens";
 import { getCurrentAccount } from "@/lib/accountStorage";
 
 type ChainId =
-  | "solana:101"
-  | "eip155:1"
-  | "eip155:137"
-  | "eip155:8453"
-  | "eip155:42161";
+  | "solana:101" // Solana Mainnet
+  | "eip155:1" // Ethereum Mainnet
+  | "eip155:137" // Polygon Mainnet
+  | "eip155:8453" // Base Mainnet
+  | "eip155:42161"; // Arbitrum Mainnet
 
 interface AddressEntry {
   chainId: ChainId;
@@ -22,26 +22,26 @@ export default async function fetchTokens(): Promise<TokensResponse> {
 
     if (currentAccount?.evm) {
       body.push({
-        chainId: "eip155:1",
+        chainId: "eip155:1", // Ethereum Mainnet
         address: currentAccount.evm.publicKey,
       });
       body.push({
-        chainId: "eip155:137",
+        chainId: "eip155:137", // Polygon Mainnet
         address: currentAccount.evm.publicKey,
       });
       body.push({
-        chainId: "eip155:8453",
+        chainId: "eip155:8453", // Base Mainnet
         address: currentAccount.evm.publicKey,
       });
       body.push({
-        chainId: "eip155:42161",
+        chainId: "eip155:42161", // Arbitrum Mainnet
         address: currentAccount.evm.publicKey,
       });
     }
 
     if (currentAccount?.svm) {
       body.push({
-        chainId: "solana:101",
+        chainId: "solana:101", // Solana Mainnet
         address: currentAccount.svm.publicKey.toString(),
       });
     }
