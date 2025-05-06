@@ -40,4 +40,4 @@ ios
 android
 
 .env
-accret-wallet.txt
+*.txt

@@ -4,6 +4,7 @@ import PolygonIcon from "./polygonIcon";
 import EthereumIcon from "./ethereumIcon";
 import BaseIcon from "./baseIcon";
 import ArbitrumIcon from "./arbitrumIcon";
+import TokenPlaceholderIcon from "./tokenPlaceholderIcon";
 
 export {
   AccretIcon,
@@ -12,4 +13,5 @@ export {
   EthereumIcon,
   BaseIcon,
   ArbitrumIcon,
+  TokenPlaceholderIcon,
 };

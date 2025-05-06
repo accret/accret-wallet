@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from "react";
+import React, { useEffect, useState, useCallback, useRef } from "react";
 import {
   StyleSheet,
   Text,
@@ -6,21 +6,29 @@ import {
   ScrollView,
   TouchableOpacity,
   RefreshControl,
+  ActivityIndicator,
   Alert,
 } from "react-native";
 import { useTheme } from "@/theme";
 import { useRouter } from "expo-router";
 import { useFocusEffect } from "@react-navigation/native";
+import { Ionicons } from "@expo/vector-icons";
+import * as Haptics from "expo-haptics";
 import {
   useCurrentAccount,
   useCurrentSVMAccount,
   useCurrentEVMAccount,
   getAllAccountsInfo,
-  switchAccount,
 } from "@/lib/accountStorage";
-import { Ionicons } from "@expo/vector-icons";
-import * as Clipboard from "expo-clipboard";
-import * as Haptics from "expo-haptics";
+import {
+  fetchPortfolioData,
+  groupTokensByChain,
+  getChainName,
+  formatUsdValue,
+  TokenWithPrice,
+  PortfolioData,
+} from "@/lib/api/portfolioUtils";
+import ChainSection from "@/components/ChainSection";
 
 type WalletInfo = {
   id: string;
@@ -33,9 +41,19 @@ export default function PortfolioScreen() {
   const { colors, theme } = useTheme();
   const router = useRouter();
   const [currentWallet, setCurrentWallet] = useState<WalletInfo | null>(null);
-  const [allWallets, setAllWallets] = useState<WalletInfo[]>([]);
+  const [, setAllWallets] = useState<WalletInfo[]>([]);
+  const [portfolioData, setPortfolioData] = useState<PortfolioData>({
+    tokens: [],
+    totalValueUsd: 0,
+    isLoading: true,
+    error: null,
+    lastUpdated: new Date(),
+  });
   const [refreshing, setRefreshing] = useState(false);
-  const [copiedAddress, setCopiedAddress] = useState<string | null>(null);
+  const [initialLoading, setInitialLoading] = useState(true);
+
+  // Ref for the interval to update portfolio data
+  const updateIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   // Fetch wallet information
   const loadWalletData = async () => {
@@ -65,15 +83,53 @@ export default function PortfolioScreen() {
     }
   };
 
-  // Initial data load
+  // Load initial portfolio data
+  const loadPortfolioData = async (showLoading = true) => {
+    try {
+      if (showLoading) {
+        setPortfolioData((prev) => ({ ...prev, isLoading: true }));
+      }
+      const data = await fetchPortfolioData();
+      setPortfolioData(data);
+      setInitialLoading(false);
+    } catch (error) {
+      console.error("Error loading portfolio data:", error);
+      setPortfolioData((prev) => ({
+        ...prev,
+        isLoading: false,
+        error:
+          error instanceof Error
+            ? error.message
+            : "Failed to load portfolio data",
+      }));
+      setInitialLoading(false);
+    }
+  };
+
+  // Setup periodic data refresh (every 10 seconds)
   useEffect(() => {
+    // Load initial data
     loadWalletData();
+    loadPortfolioData(true); // Show loading on initial load
+
+    // Set up interval for refreshing data every 10 seconds
+    updateIntervalRef.current = setInterval(() => {
+      loadPortfolioData(false); // Don't show loading on auto-refresh
+    }, 10000);
+
+    // Clean up interval on component unmount
+    return () => {
+      if (updateIntervalRef.current) {
+        clearInterval(updateIntervalRef.current);
+      }
+    };
   }, []);
 
   // Refresh data when the screen comes into focus
   useFocusEffect(
     useCallback(() => {
       loadWalletData();
+      loadPortfolioData(false);
       return () => {}; // cleanup function
     }, []),
   );
@@ -81,62 +137,8 @@ export default function PortfolioScreen() {
   // Handle pull-to-refresh
   const onRefresh = async () => {
     setRefreshing(true);
-    await loadWalletData();
+    await Promise.all([loadWalletData(), loadPortfolioData(false)]);
     setRefreshing(false);
-  };
-
-  // Format address for display
-  const formatAddress = (address?: string) => {
-    if (!address) return "Not available";
-    return `${address.substring(0, 6)}...${address.substring(address.length - 4)}`;
-  };
-
-  // Copy address to clipboard with haptic feedback
-  const copyToClipboard = async (
-    text?: string,
-    networkType?: "SVM" | "EVM",
-  ) => {
-    if (!text) return;
-
-    try {
-      await Clipboard.setStringAsync(text);
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-
-      // Set the copied address ID for visual feedback
-      setCopiedAddress(`${networkType}-${text}`);
-
-      // Reset the copied state after 2 seconds
-      setTimeout(() => {
-        setCopiedAddress(null);
-      }, 2000);
-    } catch (error) {
-      console.error("Failed to copy:", error);
-    }
-  };
-
-  // Handle wallet selection
-  const handleWalletSelect = async (walletId: string) => {
-    if (walletId === currentWallet?.id) return;
-
-    try {
-      // Show loading indicator
-      setRefreshing(true);
-
-      await switchAccount(walletId);
-
-      // Force complete reload of wallet data to ensure UI is up to date
-      await loadWalletData();
-    } catch (error) {
-      console.error("Failed to switch wallet:", error);
-      Alert.alert("Error", "Failed to switch wallet");
-    } finally {
-      setRefreshing(false);
-    }
-  };
-
-  // Navigate to account settings
-  const navigateToAccountSettings = () => {
-    router.push("/authenticated/(account)/account-settings");
   };
 
   // Navigate to camera screen
@@ -151,7 +153,36 @@ export default function PortfolioScreen() {
     router.push("/authenticated/receive");
   };
 
-  // Get wallet initials
+  // Navigate to swap screen
+  const navigateToSwap = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    router.push("/authenticated/(tabs)/swap");
+  };
+
+  // Navigate to send screen
+  const navigateToSend = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    // Placeholder for send screen navigation (not implemented yet)
+    Alert.alert("Coming Soon", "Send functionality will be available soon.");
+  };
+
+  // Navigate to account settings
+  const navigateToAccountSettings = () => {
+    router.push("/authenticated/(account)/account-settings");
+  };
+
+  // Handle token press
+  const handleTokenPress = (token: TokenWithPrice) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    // Placeholder for token detail navigation (not implemented yet)
+    Alert.alert(
+      `${token.data.name} (${token.data.symbol})`,
+      `Chain: ${token.data.chain.name}\nBalance: ${formatUsdValue(token.usdValue)}`,
+      [{ text: "OK" }],
+    );
+  };
+
+  // Get wallet initials for avatar
   const getWalletInitials = (name: string) => {
     return name
       .split(" ")
@@ -160,6 +191,9 @@ export default function PortfolioScreen() {
       .toUpperCase()
       .substring(0, 2);
   };
+
+  // Group tokens by chain
+  const groupedTokens = groupTokensByChain(portfolioData.tokens);
 
   // Custom header component with account avatar
   const Header = () => (
@@ -194,171 +228,122 @@ export default function PortfolioScreen() {
 
       <ScrollView
         style={styles.scrollContainer}
+        contentContainerStyle={styles.scrollContentContainer}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
         }>
-        {/* Current Wallet Card */}
-        {currentWallet && (
-          <View
-            style={[
-              styles.card,
-              { backgroundColor: theme === "dark" ? colors.card : "#FFFFFF" },
-            ]}>
-            <View style={styles.addressContainer}>
-              <View style={styles.networkContainer}>
-                <View
-                  style={[
-                    styles.networkBadge,
-                    { backgroundColor: colors.primaryLight },
-                  ]}>
-                  <Text
-                    style={[styles.networkLabel, { color: colors.primary }]}>
-                    SVM
-                  </Text>
-                </View>
-                <Text
-                  style={[styles.addressText, { color: colors.secondaryText }]}>
-                  {formatAddress(currentWallet.svmAddress)}
-                </Text>
-                <TouchableOpacity
-                  style={styles.copyButton}
-                  onPress={() =>
-                    copyToClipboard(currentWallet.svmAddress, "SVM")
-                  }>
-                  {copiedAddress === `SVM-${currentWallet.svmAddress}` ? (
-                    <Ionicons
-                      name="checkmark"
-                      size={16}
-                      color={colors.success}
-                    />
-                  ) : (
-                    <Ionicons
-                      name="copy-outline"
-                      size={16}
-                      color={colors.secondaryText}
-                    />
-                  )}
-                </TouchableOpacity>
-              </View>
-
-              <View style={styles.networkContainer}>
-                <View
-                  style={[
-                    styles.networkBadge,
-                    { backgroundColor: colors.primaryLight },
-                  ]}>
-                  <Text
-                    style={[styles.networkLabel, { color: colors.primary }]}>
-                    EVM
-                  </Text>
-                </View>
-                <Text
-                  style={[styles.addressText, { color: colors.secondaryText }]}>
-                  {formatAddress(currentWallet.evmAddress)}
-                </Text>
-                <TouchableOpacity
-                  style={styles.copyButton}
-                  onPress={() =>
-                    copyToClipboard(currentWallet.evmAddress, "EVM")
-                  }>
-                  {copiedAddress === `EVM-${currentWallet.evmAddress}` ? (
-                    <Ionicons
-                      name="checkmark"
-                      size={16}
-                      color={colors.success}
-                    />
-                  ) : (
-                    <Ionicons
-                      name="copy-outline"
-                      size={16}
-                      color={colors.secondaryText}
-                    />
-                  )}
-                </TouchableOpacity>
-              </View>
-            </View>
-
-            <TouchableOpacity
-              style={[
-                styles.receiveButton,
-                { backgroundColor: colors.primary },
-              ]}
-              onPress={navigateToReceive}>
-              <Ionicons name="qr-code-outline" size={20} color="white" />
-              <Text style={styles.receiveButtonText}>Receive</Text>
-            </TouchableOpacity>
-          </View>
-        )}
-
-        {/* All Wallets List */}
-        <View style={styles.section}>
-          <Text style={[styles.sectionTitle, { color: colors.text }]}>
-            All Wallets ({allWallets.length})
+        {/* Portfolio Value Card */}
+        <View
+          style={[
+            styles.portfolioCard,
+            { backgroundColor: theme === "dark" ? colors.card : "#FFFFFF" },
+          ]}>
+          <Text
+            style={[styles.portfolioLabel, { color: colors.secondaryText }]}>
+            Total Balance
           </Text>
 
-          {allWallets.map((wallet) => (
-            <TouchableOpacity
-              key={wallet.id}
-              style={[
-                styles.walletItem,
-                {
-                  backgroundColor: theme === "dark" ? colors.card : "#FFFFFF",
-                  borderColor:
-                    wallet.id === currentWallet?.id
-                      ? colors.primary
-                      : "transparent",
-                },
-              ]}
-              onPress={() => handleWalletSelect(wallet.id)}
-              activeOpacity={0.7}>
-              <View style={styles.walletItemContent}>
-                <View style={styles.walletNameContainer}>
-                  <View
-                    style={[
-                      styles.walletAvatar,
-                      {
-                        backgroundColor:
-                          wallet.id === currentWallet?.id
-                            ? colors.primary
-                            : colors.primaryLight,
-                      },
-                    ]}>
-                    <Text
-                      style={[
-                        styles.walletAvatarText,
-                        {
-                          color:
-                            wallet.id === currentWallet?.id
-                              ? "white"
-                              : colors.primary,
-                        },
-                      ]}>
-                      {getWalletInitials(wallet.name)}
-                    </Text>
-                  </View>
-                  <Text style={[styles.walletName, { color: colors.text }]}>
-                    {wallet.name}
-                  </Text>
-                </View>
-                <View style={styles.walletActions}>
-                  {wallet.id === currentWallet?.id && (
-                    <View
-                      style={[
-                        styles.activeTag,
-                        { backgroundColor: colors.primary },
-                      ]}>
-                      <Text style={styles.activeTagText}>Active</Text>
-                    </View>
-                  )}
-                  <Ionicons
-                    name="chevron-forward"
-                    size={20}
-                    color={colors.secondaryText}
-                  />
-                </View>
-              </View>
-            </TouchableOpacity>
-          ))}
+          {initialLoading ? (
+            <View style={styles.loadingContainer}>
+              <ActivityIndicator size="small" color={colors.primary} />
+            </View>
+          ) : (
+            <Text style={[styles.portfolioValue, { color: colors.text }]}>
+              {formatUsdValue(portfolioData.totalValueUsd)}
+            </Text>
+          )}
+        </View>
+
+        {/* Action Buttons */}
+        <View style={styles.actionButtonsContainer}>
+          <TouchableOpacity
+            style={[styles.actionButton, { backgroundColor: colors.primary }]}
+            onPress={navigateToSend}>
+            <Ionicons name="arrow-up" size={24} color="white" />
+            <Text style={styles.actionButtonText}>Send</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.actionButton, { backgroundColor: colors.primary }]}
+            onPress={navigateToReceive}>
+            <Ionicons name="arrow-down" size={24} color="white" />
+            <Text style={styles.actionButtonText}>Receive</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.actionButton, { backgroundColor: colors.primary }]}
+            onPress={navigateToSwap}>
+            <Ionicons name="swap-horizontal" size={24} color="white" />
+            <Text style={styles.actionButtonText}>Swap</Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* Tokens Sections */}
+        <View style={styles.tokensContainer}>
+          <Text style={[styles.sectionTitle, { color: colors.text }]}>
+            Tokens
+          </Text>
+
+          {portfolioData.isLoading && !initialLoading ? (
+            <View style={styles.loadingTokensContainer}>
+              <ActivityIndicator size="large" color={colors.primary} />
+              <Text
+                style={[styles.loadingText, { color: colors.secondaryText }]}>
+                Loading tokens...
+              </Text>
+            </View>
+          ) : portfolioData.error ? (
+            <View style={styles.errorContainer}>
+              <Ionicons
+                name="alert-circle-outline"
+                size={48}
+                color={colors.error}
+              />
+              <Text style={[styles.errorText, { color: colors.error }]}>
+                {portfolioData.error}
+              </Text>
+              <TouchableOpacity
+                style={[
+                  styles.retryButton,
+                  { backgroundColor: colors.primary },
+                ]}
+                onPress={() => loadPortfolioData(true)}>
+                <Text style={styles.retryButtonText}>Retry</Text>
+              </TouchableOpacity>
+            </View>
+          ) : portfolioData.tokens.length === 0 ? (
+            <View style={styles.emptyContainer}>
+              <Ionicons
+                name="wallet-outline"
+                size={48}
+                color={colors.secondaryText}
+              />
+              <Text style={[styles.emptyText, { color: colors.secondaryText }]}>
+                No tokens found in this wallet
+              </Text>
+            </View>
+          ) : (
+            // Calculate total value by chain and sort chains by value (highest first)
+            Object.entries(groupedTokens)
+              .map(([chainId, tokens]) => ({
+                chainId,
+                tokens,
+                totalValue: tokens.reduce(
+                  (sum, token) => sum + token.usdValue,
+                  0,
+                ),
+              }))
+              .sort((a, b) => b.totalValue - a.totalValue)
+              .map(({ chainId, tokens }) => (
+                <ChainSection
+                  key={chainId}
+                  chainId={chainId}
+                  chainName={getChainName(chainId)}
+                  tokens={tokens}
+                  onTokenPress={handleTokenPress}
+                />
+              ))
+          )}
         </View>
       </ScrollView>
     </View>
@@ -397,108 +382,99 @@ const styles = StyleSheet.create({
   scrollContainer: {
     flex: 1,
   },
-  card: {
+  scrollContentContainer: {
+    paddingBottom: 40,
+  },
+  portfolioCard: {
     marginHorizontal: 20,
     borderRadius: 16,
-    padding: 16,
+    padding: 20,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 4,
     elevation: 2,
-    marginBottom: 16,
+    marginBottom: 20,
   },
-  addressContainer: {
-    gap: 12,
-    marginBottom: 16,
-  },
-  networkContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  networkBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 6,
-    marginRight: 8,
-  },
-  networkLabel: {
-    fontSize: 12,
-    fontWeight: "700",
-  },
-  addressText: {
-    fontSize: 14,
-    flex: 1,
-  },
-  copyButton: {
-    padding: 6,
-  },
-  receiveButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    borderRadius: 12,
-    padding: 14,
-  },
-  receiveButtonText: {
-    color: "white",
+  portfolioLabel: {
     fontSize: 16,
-    fontWeight: "600",
-    marginLeft: 8,
+    marginBottom: 8,
   },
-  section: {
-    padding: 20,
+  portfolioValue: {
+    fontSize: 36,
+    fontWeight: "700",
+    marginBottom: 8,
+  },
+  lastUpdated: {
+    fontSize: 12,
+  },
+  loadingContainer: {
+    height: 36,
+    justifyContent: "center",
+    marginVertical: 8,
+  },
+  actionButtonsContainer: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginHorizontal: 20,
+    marginBottom: 24,
+  },
+  actionButton: {
+    borderRadius: 12,
+    padding: 16,
+    width: "30%",
+    alignItems: "center",
+  },
+  actionButtonText: {
+    color: "white",
+    marginTop: 8,
+    fontWeight: "600",
+  },
+  tokensContainer: {
+    paddingHorizontal: 20,
   },
   sectionTitle: {
     fontSize: 18,
     fontWeight: "600",
-    marginBottom: 12,
+    marginBottom: 16,
   },
-  walletItem: {
-    borderRadius: 12,
-    marginBottom: 8,
-    borderWidth: 1,
-    overflow: "hidden",
-  },
-  walletItemContent: {
-    flexDirection: "row",
-    justifyContent: "space-between",
+  loadingTokensContainer: {
     alignItems: "center",
-    padding: 16,
-  },
-  walletNameContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  walletAvatar: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
     justifyContent: "center",
-    alignItems: "center",
-    marginRight: 12,
+    paddingVertical: 32,
   },
-  walletAvatarText: {
-    fontSize: 14,
-    fontWeight: "700",
-  },
-  walletActions: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-  },
-  walletName: {
+  loadingText: {
+    marginTop: 16,
     fontSize: 16,
-    fontWeight: "500",
   },
-  activeTag: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 4,
+  errorContainer: {
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 32,
   },
-  activeTagText: {
+  errorText: {
+    marginTop: 16,
+    marginBottom: 24,
+    fontSize: 16,
+    textAlign: "center",
+  },
+  retryButton: {
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 24,
+  },
+  retryButtonText: {
     color: "white",
-    fontSize: 12,
     fontWeight: "600",
+  },
+  emptyContainer: {
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 32,
+  },
+  emptyText: {
+    marginTop: 16,
+    fontSize: 16,
+    textAlign: "center",
   },
 });
