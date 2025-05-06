@@ -99,11 +99,6 @@ export async function fetchTokenPriceUsd(
   token: Token,
 ): Promise<{ price: number; priceChange24h: number }> {
   try {
-    // Skip tokens without coingeckoId
-    if (!token.data.coingeckoId) {
-      return { price: 0, priceChange24h: 0 }; // Default fallback for tokens without price data
-    }
-
     const chainId = token.data.chain.id as
       | "solana:101"
       | "eip155:1"
