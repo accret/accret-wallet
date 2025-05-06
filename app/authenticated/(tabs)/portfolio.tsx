@@ -1,3 +1,5 @@
+// Updated app/authenticated/(tabs)/portfolio.tsx with token verification toggle
+
 import React, { useEffect, useState, useCallback, useRef } from "react";
 import {
   StyleSheet,
@@ -30,6 +32,12 @@ import {
 } from "@/lib/api/portfolioUtils";
 import ChainSection from "@/components/ChainSection";
 
+enum SpamStatus {
+  NOT_VERIFIED = "NOT_VERIFIED",
+  POSSIBLE_SPAM = "POSSIBLE_SPAM",
+  VERIFIED = "VERIFIED",
+}
+
 type WalletInfo = {
   id: string;
   name: string;
@@ -51,6 +59,8 @@ export default function PortfolioScreen() {
   });
   const [refreshing, setRefreshing] = useState(false);
   const [initialLoading, setInitialLoading] = useState(true);
+  // Add state for verified tokens toggle
+  const [showVerifiedOnly, setShowVerifiedOnly] = useState(false);
 
   // Ref for the interval to update portfolio data
   const updateIntervalRef = useRef<NodeJS.Timeout | null>(null);
@@ -182,6 +192,19 @@ export default function PortfolioScreen() {
     );
   };
 
+  // Toggle the verified tokens filter
+  const toggleVerifiedOnly = () => {
+    Haptics.selectionAsync();
+    setShowVerifiedOnly(!showVerifiedOnly);
+  };
+
+  // Filter tokens based on verification status if needed
+  const filteredTokens = showVerifiedOnly
+    ? portfolioData.tokens.filter(
+        (token) => token.data.spamStatus === SpamStatus.VERIFIED,
+      )
+    : portfolioData.tokens;
+
   // Get wallet initials for avatar
   const getWalletInitials = (name: string) => {
     return name
@@ -193,7 +216,7 @@ export default function PortfolioScreen() {
   };
 
   // Group tokens by chain
-  const groupedTokens = groupTokensByChain(portfolioData.tokens);
+  const groupedTokens = groupTokensByChain(filteredTokens);
 
   // Custom header component with account avatar
   const Header = () => (
@@ -220,6 +243,12 @@ export default function PortfolioScreen() {
         <Ionicons name="scan-outline" size={24} color={colors.text} />
       </TouchableOpacity>
     </View>
+  );
+
+  // Calculate total value of filtered tokens
+  const filteredTotalValue = filteredTokens.reduce(
+    (sum, token) => sum + token.usdValue,
+    0,
   );
 
   return (
@@ -249,7 +278,7 @@ export default function PortfolioScreen() {
             </View>
           ) : (
             <Text style={[styles.portfolioValue, { color: colors.text }]}>
-              {formatUsdValue(portfolioData.totalValueUsd)}
+              {formatUsdValue(filteredTotalValue)}
             </Text>
           )}
         </View>
@@ -280,9 +309,43 @@ export default function PortfolioScreen() {
 
         {/* Tokens Sections */}
         <View style={styles.tokensContainer}>
-          <Text style={[styles.sectionTitle, { color: colors.text }]}>
-            Tokens
-          </Text>
+          <View style={styles.tokensSectionHeader}>
+            <Text style={[styles.sectionTitle, { color: colors.text }]}>
+              Tokens
+            </Text>
+
+            {/* Verified Tokens Toggle as Icon */}
+            <TouchableOpacity
+              style={[
+                styles.verifiedIconButton,
+                {
+                  backgroundColor: showVerifiedOnly
+                    ? colors.primaryLight
+                    : "transparent",
+                  borderColor: colors.primary,
+                  borderWidth: showVerifiedOnly ? 0 : 1,
+                },
+              ]}
+              onPress={toggleVerifiedOnly}>
+              <Ionicons
+                name={showVerifiedOnly ? "shield-checkmark" : "shield-outline"}
+                size={16}
+                color={showVerifiedOnly ? colors.primary : colors.secondaryText}
+              />
+              <Text
+                style={[
+                  styles.verifiedButtonText,
+                  {
+                    color: showVerifiedOnly
+                      ? colors.primary
+                      : colors.secondaryText,
+                    marginLeft: 4,
+                  },
+                ]}>
+                {showVerifiedOnly ? "Verified" : "All"}
+              </Text>
+            </TouchableOpacity>
+          </View>
 
           {portfolioData.isLoading && !initialLoading ? (
             <View style={styles.loadingTokensContainer}>
@@ -311,7 +374,7 @@ export default function PortfolioScreen() {
                 <Text style={styles.retryButtonText}>Retry</Text>
               </TouchableOpacity>
             </View>
-          ) : portfolioData.tokens.length === 0 ? (
+          ) : filteredTokens.length === 0 ? (
             <View style={styles.emptyContainer}>
               <Ionicons
                 name="wallet-outline"
@@ -319,8 +382,26 @@ export default function PortfolioScreen() {
                 color={colors.secondaryText}
               />
               <Text style={[styles.emptyText, { color: colors.secondaryText }]}>
-                No tokens found in this wallet
+                {showVerifiedOnly
+                  ? "No verified tokens found in this wallet"
+                  : "No tokens found in this wallet"}
               </Text>
+              {showVerifiedOnly && (
+                <TouchableOpacity
+                  style={[
+                    styles.showAllButton,
+                    { borderColor: colors.primary },
+                  ]}
+                  onPress={() => setShowVerifiedOnly(false)}>
+                  <Text
+                    style={[
+                      styles.showAllButtonText,
+                      { color: colors.primary },
+                    ]}>
+                    Show All Tokens
+                  </Text>
+                </TouchableOpacity>
+              )}
             </View>
           ) : (
             // Calculate total value by chain and sort chains by value (highest first)
@@ -433,10 +514,26 @@ const styles = StyleSheet.create({
   tokensContainer: {
     paddingHorizontal: 20,
   },
+  tokensSectionHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 16,
+  },
   sectionTitle: {
     fontSize: 18,
     fontWeight: "600",
-    marginBottom: 16,
+  },
+  verifiedIconButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+  },
+  verifiedButtonText: {
+    fontSize: 12,
+    fontWeight: "600",
   },
   loadingTokensContainer: {
     alignItems: "center",
@@ -476,5 +573,15 @@ const styles = StyleSheet.create({
     marginTop: 16,
     fontSize: 16,
     textAlign: "center",
+    marginBottom: 16,
+  },
+  showAllButton: {
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 20,
+    borderWidth: 1,
+  },
+  showAllButtonText: {
+    fontWeight: "600",
   },
 });
