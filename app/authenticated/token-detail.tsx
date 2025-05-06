@@ -8,8 +8,10 @@ import {
   Image,
   ActivityIndicator,
   Alert,
+  Dimensions,
 } from "react-native";
 import { useTheme } from "@/theme";
+import { runOnJS } from "react-native-reanimated";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import * as WebBrowser from "expo-web-browser";
@@ -18,7 +20,19 @@ import * as Haptics from "expo-haptics";
 import { TokenPlaceholderIcon } from "@/icons";
 import { formatUsdValue, formatTokenAmount } from "@/lib/api/portfolioUtils";
 import fetchTokenInfo from "@/lib/api/tokenInfo";
+import fetchPriceHistory from "@/lib/api/priceHistory";
 import type { TokenInfoSuccess } from "@/types/tokenInfo";
+import { LineChart } from "react-native-wagmi-charts";
+
+const SCREEN_WIDTH = Dimensions.get("window").width;
+const TIME_PERIODS = [
+  { label: "1H", value: "1H" },
+  { label: "1D", value: "1D" },
+  { label: "1W", value: "1W" },
+  { label: "1M", value: "1M" },
+  { label: "YTD", value: "YTD" },
+  { label: "ALL", value: "ALL" },
+];
 
 export default function TokenDetailScreen() {
   const { colors, theme } = useTheme();
@@ -28,6 +42,16 @@ export default function TokenDetailScreen() {
   const [error, setError] = useState<string | null>(null);
   const [tokenInfo, setTokenInfo] = useState<TokenInfoSuccess | null>(null);
   const [copiedText, setCopiedText] = useState<string | null>(null);
+
+  // Chart state
+  const [chartData, setChartData] = useState<
+    { timestamp: number; value: number }[]
+  >([]);
+  const [chartLoading, setChartLoading] = useState(true);
+  const [chartError, setChartError] = useState<string | null>(null);
+  const [selectedTimeRange, setSelectedTimeRange] = useState<string>("1D");
+  const [chartColorPositive, setChartColorPositive] = useState(colors.success);
+  const [chartColorNegative, setChartColorNegative] = useState(colors.error);
 
   // Get params from navigation
   const network = params.network as string;
@@ -48,6 +72,25 @@ export default function TokenDetailScreen() {
   useEffect(() => {
     fetchTokenDetails();
   }, [network, tokenAddress]);
+
+  useEffect(() => {
+    fetchChartData();
+  }, [network, tokenAddress, selectedTimeRange]);
+
+  // Set chart color based on price change
+  useEffect(() => {
+    // Determine chart color based on price change
+    const chartColor = tokenPriceChange >= 0 ? colors.success : colors.error;
+
+    // Update chart color for path and cursor
+    if (tokenPriceChange >= 0) {
+      setChartColorPositive(colors.success);
+      setChartColorNegative(colors.error);
+    } else {
+      setChartColorPositive(colors.error);
+      setChartColorNegative(colors.success);
+    }
+  }, [tokenPriceChange, colors.success, colors.error]);
 
   const fetchTokenDetails = async () => {
     if (!network || !tokenAddress) {
@@ -71,6 +114,43 @@ export default function TokenDetailScreen() {
       console.error("Token info fetch error:", err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchChartData = async () => {
+    if (!network || !tokenAddress) {
+      setChartError("Invalid token parameters");
+      setChartLoading(false);
+      return;
+    }
+
+    try {
+      setChartLoading(true);
+      const response = await fetchPriceHistory(
+        network as any,
+        tokenAddress,
+        selectedTimeRange as any,
+      );
+
+      // Transform price history data into format expected by the chart
+      if ("history" in response) {
+        const formattedData = response.history.map((dataPoint) => ({
+          timestamp: dataPoint.unixTime,
+          value: parseFloat(dataPoint.value),
+        }));
+
+        setChartData(formattedData);
+        setChartError(null);
+      } else {
+        setChartError(response.message || "Failed to fetch price history");
+        setChartData([]);
+      }
+    } catch (err) {
+      setChartError("An error occurred while fetching price history");
+      console.error("Price history fetch error:", err);
+      setChartData([]);
+    } finally {
+      setChartLoading(false);
     }
   };
 
@@ -98,6 +178,11 @@ export default function TokenDetailScreen() {
       console.error("Open URL error:", err);
       Alert.alert("Error", "Failed to open the URL");
     }
+  };
+
+  const handleTimeRangeSelect = (timeRange: string) => {
+    Haptics.selectionAsync();
+    setSelectedTimeRange(timeRange);
   };
 
   // Calculating if price change is positive, negative, or neutral
@@ -128,6 +213,135 @@ export default function TokenDetailScreen() {
       return "https://dhc7eusqrdwa0.cloudfront.net/assets/polygon.png";
     }
     return logoUrl;
+  };
+
+  // Handle haptic feedback for chart interaction
+  const handleChartHaptic = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  };
+
+  // Render time period selector
+  const renderTimePeriodSelector = () => {
+    return (
+      <View style={styles.timePeriodSelector}>
+        {TIME_PERIODS.map((period) => (
+          <TouchableOpacity
+            key={period.value}
+            style={[
+              styles.timePeriodButton,
+              selectedTimeRange === period.value && {
+                backgroundColor:
+                  theme === "dark" ? colors.primaryLight : colors.primaryLight,
+                borderColor: colors.primary,
+              },
+            ]}
+            onPress={() => handleTimeRangeSelect(period.value)}>
+            <Text
+              style={[
+                styles.timePeriodText,
+                {
+                  color:
+                    selectedTimeRange === period.value
+                      ? colors.primary
+                      : colors.secondaryText,
+                },
+              ]}>
+              {period.label}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+    );
+  };
+
+  // Render the price chart
+  const renderPriceChart = () => {
+    const chartColor = tokenPriceChange >= 0 ? colors.success : colors.error;
+
+    if (chartLoading) {
+      return (
+        <View style={styles.chartLoadingContainer}>
+          <ActivityIndicator size="large" color={colors.primary} />
+          <Text style={[styles.loadingText, { color: colors.secondaryText }]}>
+            Loading price data...
+          </Text>
+        </View>
+      );
+    }
+
+    if (chartError || chartData.length === 0) {
+      return (
+        <View style={styles.chartErrorContainer}>
+          <Ionicons
+            name="alert-circle-outline"
+            size={24}
+            color={colors.secondaryText}
+          />
+          <Text
+            style={[styles.chartErrorText, { color: colors.secondaryText }]}>
+            {chartError || "No price data available"}
+          </Text>
+          <TouchableOpacity
+            style={[styles.retryButton, { backgroundColor: colors.primary }]}
+            onPress={fetchChartData}>
+            <Text style={styles.retryButtonText}>Retry</Text>
+          </TouchableOpacity>
+        </View>
+      );
+    }
+
+    return (
+      <View style={styles.chartContainer}>
+        <LineChart.Provider data={chartData}>
+          <LineChart height={200} width={SCREEN_WIDTH - 32}>
+            <LineChart.Path color={chartColor}>
+              <LineChart.Gradient color={chartColor} />
+            </LineChart.Path>
+            <LineChart.CursorCrosshair
+              color={chartColor}
+              onActivated={handleChartHaptic}
+              onEnded={handleChartHaptic}>
+              <LineChart.Tooltip
+                textStyle={{
+                  color: colors.text,
+                  fontWeight: "bold",
+                  fontSize: 14,
+                  padding: 4,
+                  backgroundColor: theme === "dark" ? colors.card : "#FFF",
+                  borderRadius: 4,
+                  overflow: "hidden",
+                  borderWidth: 1,
+                  borderColor: colors.border,
+                }}
+              />
+            </LineChart.CursorCrosshair>
+          </LineChart>
+          <View style={styles.chartLabelsContainer}>
+            <LineChart.PriceText
+              style={[styles.priceLabel, { color: colors.text }]}
+              precision={tokenDecimals > 2 ? tokenDecimals : 2}
+              format={({ value }) => {
+                "worklet";
+                // invoke your JS formatter asynchronously on the JS thread
+                const formatted = runOnJS(formatUsdValue)(parseFloat(value));
+                return `${formatted}`;
+              }}
+            />
+            <LineChart.DatetimeText
+              style={[styles.dateTimeLabel, { color: colors.secondaryText }]}
+              locale="en-US"
+              options={{
+                year: "numeric",
+                month: "short",
+                day: "numeric",
+                hour: "numeric",
+                minute: "numeric",
+              }}
+            />
+          </View>
+        </LineChart.Provider>
+      </View>
+    );
   };
 
   return (
@@ -227,7 +441,7 @@ export default function TokenDetailScreen() {
             </View>
           </View>
 
-          {/* Chart Placeholder */}
+          {/* Chart Container */}
           <View
             style={[styles.chartContainer, { backgroundColor: colors.card }]}>
             <View style={styles.chartHeader}>
@@ -235,22 +449,9 @@ export default function TokenDetailScreen() {
                 Price Chart
               </Text>
             </View>
-            <View
-              style={[
-                styles.chartPlaceholder,
-                {
-                  backgroundColor:
-                    theme === "dark" ? colors.inputBackground : "#F5F5F5",
-                },
-              ]}>
-              <Text
-                style={[
-                  styles.comingSoonText,
-                  { color: colors.secondaryText },
-                ]}>
-                Price Chart Coming Soon
-              </Text>
-            </View>
+
+            {renderTimePeriodSelector()}
+            {renderPriceChart()}
           </View>
 
           {/* Token Details */}
@@ -630,16 +831,59 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: "rgba(0,0,0,0.05)",
   },
-  chartPlaceholder: {
+  chartLoadingContainer: {
     height: 200,
     justifyContent: "center",
     alignItems: "center",
     margin: 16,
     borderRadius: 8,
   },
+  chartErrorContainer: {
+    height: 200,
+    justifyContent: "center",
+    alignItems: "center",
+    margin: 16,
+    borderRadius: 8,
+  },
+  chartErrorText: {
+    fontSize: 14,
+    marginVertical: 8,
+    textAlign: "center",
+  },
   comingSoonText: {
     fontSize: 16,
     fontWeight: "600",
+  },
+  timePeriodSelector: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+  },
+  timePeriodButton: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: "transparent",
+  },
+  timePeriodText: {
+    fontSize: 12,
+    fontWeight: "600",
+  },
+  chartLabelsContainer: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingHorizontal: 16,
+    paddingBottom: 16,
+  },
+  priceLabel: {
+    fontSize: 16,
+    fontWeight: "600",
+  },
+  dateTimeLabel: {
+    fontSize: 12,
   },
   detailsContainer: {
     margin: 16,
