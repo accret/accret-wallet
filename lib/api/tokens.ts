@@ -16,31 +16,31 @@ interface AddressEntry {
 
 export default async function fetchTokens(): Promise<TokensResponse> {
   try {
-    const body: AddressEntry[] = [];
+    const addresses: AddressEntry[] = [];
 
     const currentAccount = await getCurrentAccount();
 
     if (currentAccount?.evm) {
-      body.push({
+      addresses.push({
         chainId: "eip155:1", // Ethereum Mainnet
         address: currentAccount.evm.publicKey,
       });
-      body.push({
+      addresses.push({
         chainId: "eip155:137", // Polygon Mainnet
         address: currentAccount.evm.publicKey,
       });
-      body.push({
+      addresses.push({
         chainId: "eip155:8453", // Base Mainnet
         address: currentAccount.evm.publicKey,
       });
-      body.push({
+      addresses.push({
         chainId: "eip155:42161", // Arbitrum Mainnet
         address: currentAccount.evm.publicKey,
       });
     }
 
     if (currentAccount?.svm) {
-      body.push({
+      addresses.push({
         chainId: "solana:101", // Solana Mainnet
         address: currentAccount.svm.publicKey.toString(),
       });
@@ -49,6 +49,8 @@ export default async function fetchTokens(): Promise<TokensResponse> {
     const headers = {
       "Content-Type": "application/json",
     };
+
+    const body = { addresses: addresses };
 
     const response: AxiosResponse<TokensResponse> = await axios.post(
       "https://api.accret.fun/v1/tokens",
