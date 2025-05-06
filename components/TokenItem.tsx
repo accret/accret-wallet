@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import { StyleSheet, Text, View, Image, TouchableOpacity } from "react-native";
 import { useTheme } from "@/theme";
 import { TokenWithPrice } from "@/lib/api/portfolioUtils";
@@ -12,6 +12,7 @@ interface TokenItemProps {
 
 export default function TokenItem({ token, onPress }: TokenItemProps) {
   const { colors } = useTheme();
+  const [imageError, setImageError] = useState(false);
   const formattedAmount = formatTokenAmount(
     token.data.amount,
     token.data.decimals,
@@ -33,18 +34,29 @@ export default function TokenItem({ token, onPress }: TokenItemProps) {
         ? `${token.priceChange24h.toFixed(2)}%`
         : `0.00%`;
 
+  // Handle Polygon logo URL specifically
+  const getLogoUri = () => {
+    // Check if it's the problematic Polygon URL
+    if (
+      token.data.logoUri ===
+      "https://wallet-asset.matic.network/img/tokens/matic.svg"
+    ) {
+      return "https://dhc7eusqrdwa0.cloudfront.net/assets/polygon.png";
+    }
+    return token.data.logoUri;
+  };
+
   return (
     <TouchableOpacity
       style={[styles.container, { backgroundColor: colors.card }]}
       onPress={() => onPress(token)}>
       {/* Token Logo */}
       <View style={styles.logoContainer}>
-        {token.data.logoUri ? (
+        {token.data.logoUri && !imageError ? (
           <Image
-            source={{ uri: token.data.logoUri }}
+            source={{ uri: getLogoUri() }}
             style={styles.tokenLogo}
-            // Use the onError callback to show the placeholder if the image fails to load
-            onError={() => {}}
+            onError={() => setImageError(true)}
           />
         ) : (
           <TokenPlaceholderIcon
