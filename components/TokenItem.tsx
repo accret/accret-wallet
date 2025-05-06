@@ -1,17 +1,20 @@
+// File: accret-wallet/components/TokenItem.tsx (updated)
 import React, { useState } from "react";
 import { StyleSheet, Text, View, Image, TouchableOpacity } from "react-native";
 import { useTheme } from "@/theme";
 import { TokenWithPrice } from "@/lib/api/portfolioUtils";
 import { formatTokenAmount, formatUsdValue } from "@/lib/api/portfolioUtils";
 import { TokenPlaceholderIcon } from "@/icons";
+import { useRouter } from "expo-router";
 
 interface TokenItemProps {
   token: TokenWithPrice;
-  onPress: (token: TokenWithPrice) => void;
+  onPress?: (token: TokenWithPrice) => void;
 }
 
 export default function TokenItem({ token, onPress }: TokenItemProps) {
   const { colors } = useTheme();
+  const router = useRouter();
   const [imageError, setImageError] = useState(false);
   const formattedAmount = formatTokenAmount(
     token.data.amount,
@@ -46,10 +49,50 @@ export default function TokenItem({ token, onPress }: TokenItemProps) {
     return token.data.logoUri;
   };
 
+  const handlePress = () => {
+    let tokenAddress = "";
+
+    if (token.type === "ERC20") {
+      // For ERC20 tokens, use the contract address
+      const erc20Data = token.data as any;
+      tokenAddress = erc20Data.contractAddress;
+    } else if (token.type === "SPL") {
+      // For SPL tokens, use the mint address
+      const splData = token.data as any;
+      tokenAddress = splData.mintAddress;
+    } else {
+      // For native tokens, use slip44 format
+      const slip44Map: Record<string, string> = {
+        "solana:101": "slip44:501",
+        "eip155:1": "slip44:60",
+        "eip155:137": "slip44:966",
+        "eip155:8453": "slip44:8453",
+        "eip155:42161": "slip44:9001",
+      };
+      tokenAddress = slip44Map[token.data.chain.id] || "";
+    }
+
+    router.push({
+      pathname: "/authenticated/token-detail",
+      params: {
+        network: token.data.chain.id,
+        tokenAddress: tokenAddress,
+        name: token.data.name,
+        symbol: token.data.symbol,
+        logo: token.data.logoUri,
+        amount: token.data.amount,
+        decimals: token.data.decimals.toString(),
+        price: token.priceUsd.toString(),
+        priceChange: token.priceChange24h.toString(),
+        value: token.usdValue.toString(),
+      },
+    });
+  };
+
   return (
     <TouchableOpacity
       style={[styles.container, { backgroundColor: colors.card }]}
-      onPress={() => onPress(token)}>
+      onPress={handlePress}>
       {/* Token Logo */}
       <View style={styles.logoContainer}>
         {token.data.logoUri && !imageError ? (

@@ -1,3 +1,4 @@
+// File: accret-wallet/app/authenticated/_layout.tsx (updated)
 import React from "react";
 import { useEffect } from "react";
 import { useTheme } from "@/theme";
@@ -49,6 +50,13 @@ export default function AuthenticatedLayout() {
         />
         <Stack.Screen
           name="receive"
+          options={{
+            headerShown: false,
+            gestureEnabled: true,
+          }}
+        />
+        <Stack.Screen
+          name="token-detail"
           options={{
             headerShown: false,
             gestureEnabled: true,
