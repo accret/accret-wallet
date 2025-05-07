@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import {
   StyleSheet,
   Text,
@@ -11,14 +11,13 @@ import {
   Dimensions,
 } from "react-native";
 import { useTheme } from "@/theme";
-import { runOnJS } from "react-native-reanimated";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import * as WebBrowser from "expo-web-browser";
 import * as Clipboard from "expo-clipboard";
 import * as Haptics from "expo-haptics";
 import { TokenPlaceholderIcon } from "@/icons";
-import { formatUsdValue, formatTokenAmount } from "@/lib/api/portfolioUtils";
+import { formatTokenAmount } from "@/lib/api/portfolioUtils";
 import fetchTokenInfo from "@/lib/api/tokenInfo";
 import fetchPriceHistory from "@/lib/api/priceHistory";
 import type { TokenInfoSuccess } from "@/types/tokenInfo";
@@ -34,6 +33,50 @@ const TIME_PERIODS = [
   { label: "ALL", value: "ALL" },
 ];
 
+// Function to format USD value (duplicated here to avoid worklet issues)
+const formatUsdPrice = (value: number): string => {
+  if (value >= 1000000) {
+    return `$${(value / 1000000).toFixed(2)}M`;
+  } else if (value >= 1000) {
+    return `$${(value / 1000).toFixed(2)}K`;
+  } else if (value >= 1) {
+    return `$${value.toFixed(2)}`;
+  } else if (value > 0) {
+    return `$${value.toFixed(4)}`;
+  }
+  return "$0.00";
+};
+
+// Fixed formatter for chart display to ensure it never returns "..."
+const formatPriceForChart = (value: number): string => {
+  if (isNaN(value)) return "$0.00";
+
+  if (value >= 1000000) {
+    return `$${(value / 1000000).toFixed(2)}M`;
+  } else if (value >= 1000) {
+    return `$${(value / 1000).toFixed(2)}K`;
+  } else if (value >= 1) {
+    return `$${value.toFixed(2)}`;
+  } else if (value > 0) {
+    return `$${value.toFixed(4)}`;
+  }
+  return "$0.00";
+};
+
+// Format date in a consistent way
+const formatDateTime = (timestamp: number): string => {
+  if (!timestamp) return "";
+
+  const date = new Date(timestamp);
+  return date.toLocaleString("en-US", {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "numeric",
+    hour12: true,
+  });
+};
+
 export default function TokenDetailScreen() {
   const { colors, theme } = useTheme();
   const router = useRouter();
@@ -42,16 +85,22 @@ export default function TokenDetailScreen() {
   const [error, setError] = useState<string | null>(null);
   const [tokenInfo, setTokenInfo] = useState<TokenInfoSuccess | null>(null);
   const [copiedText, setCopiedText] = useState<string | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
 
-  // Chart state
+  // Chart state with correct typing
   const [chartData, setChartData] = useState<
     { timestamp: number; value: number }[]
   >([]);
   const [chartLoading, setChartLoading] = useState(true);
   const [chartError, setChartError] = useState<string | null>(null);
   const [selectedTimeRange, setSelectedTimeRange] = useState<string>("1D");
-  const [chartColorPositive, setChartColorPositive] = useState(colors.success);
-  const [chartColorNegative, setChartColorNegative] = useState(colors.error);
+  const [isPriceIncreasing, setIsPriceIncreasing] = useState(true);
+
+  // Current price from chart data (most recent value)
+  const [currentPrice, setCurrentPrice] = useState<number | null>(null);
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const [minValue, setMinValue] = useState<number | null>(null);
+  const [maxValue, setMaxValue] = useState<number | null>(null);
 
   // Get params from navigation
   const network = params.network as string;
@@ -77,20 +126,36 @@ export default function TokenDetailScreen() {
     fetchChartData();
   }, [network, tokenAddress, selectedTimeRange]);
 
-  // Set chart color based on price change
+  // Update current price whenever chart data changes
   useEffect(() => {
-    // Determine chart color based on price change
-    const chartColor = tokenPriceChange >= 0 ? colors.success : colors.error;
+    if (chartData.length > 0) {
+      // Get the most recent price
+      const latestPriceData = chartData[chartData.length - 1];
+      setCurrentPrice(latestPriceData.value);
+      setLastUpdated(new Date(latestPriceData.timestamp));
 
-    // Update chart color for path and cursor
-    if (tokenPriceChange >= 0) {
-      setChartColorPositive(colors.success);
-      setChartColorNegative(colors.error);
-    } else {
-      setChartColorPositive(colors.error);
-      setChartColorNegative(colors.success);
+      // Calculate min and max values for better display
+      const values = chartData.map((item) => item.value);
+      setMinValue(Math.min(...values));
+      setMaxValue(Math.max(...values));
     }
-  }, [tokenPriceChange, colors.success, colors.error]);
+  }, [chartData]);
+
+  // Determine if the chart is trending up or down
+  const determineChartTrend = (
+    data: { timestamp: number; value: number }[],
+  ) => {
+    if (data.length < 2) return true;
+
+    const firstValue = data[0].value;
+    const lastValue = data[data.length - 1].value;
+    return lastValue >= firstValue;
+  };
+
+  // Chart color based on price trend
+  const chartColor = useMemo(() => {
+    return isPriceIncreasing ? colors.success : colors.error;
+  }, [isPriceIncreasing, colors.success, colors.error]);
 
   const fetchTokenDetails = async () => {
     if (!network || !tokenAddress) {
@@ -126,6 +191,8 @@ export default function TokenDetailScreen() {
 
     try {
       setChartLoading(true);
+      setRefreshing(true);
+
       const response = await fetchPriceHistory(
         network as any,
         tokenAddress,
@@ -135,11 +202,16 @@ export default function TokenDetailScreen() {
       // Transform price history data into format expected by the chart
       if ("history" in response) {
         const formattedData = response.history.map((dataPoint) => ({
-          timestamp: dataPoint.unixTime,
+          timestamp: dataPoint.unixTime * 1000, // Convert to milliseconds for JS Date
           value: parseFloat(dataPoint.value),
         }));
 
+        // Ensure data is sorted by timestamp
+        formattedData.sort((a, b) => a.timestamp - b.timestamp);
+
         setChartData(formattedData);
+        // Determine if price is trending up or down for this time period
+        setIsPriceIncreasing(determineChartTrend(formattedData));
         setChartError(null);
       } else {
         setChartError(response.message || "Failed to fetch price history");
@@ -151,6 +223,7 @@ export default function TokenDetailScreen() {
       setChartData([]);
     } finally {
       setChartLoading(false);
+      setRefreshing(false);
     }
   };
 
@@ -185,6 +258,17 @@ export default function TokenDetailScreen() {
     setSelectedTimeRange(timeRange);
   };
 
+  // Handle refresh button press
+  const handleRefresh = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    fetchChartData();
+  };
+
+  // Handle haptic feedback for chart interaction
+  const handleChartHaptic = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  };
+
   // Calculating if price change is positive, negative, or neutral
   const priceChangeColor =
     tokenPriceChange > 0
@@ -215,9 +299,20 @@ export default function TokenDetailScreen() {
     return logoUrl;
   };
 
-  // Handle haptic feedback for chart interaction
-  const handleChartHaptic = () => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  // Format the last updated time
+  const getLastUpdatedText = () => {
+    if (!lastUpdated) return "";
+    return formatDateTime(lastUpdated.getTime());
+  };
+
+  // Get first and last date for range display
+  const getDateRangeText = () => {
+    if (chartData.length < 2) return "";
+
+    const firstDate = new Date(chartData[0].timestamp);
+    const lastDate = new Date(chartData[chartData.length - 1].timestamp);
+
+    return `${formatDateTime(firstDate.getTime())} - ${formatDateTime(lastDate.getTime())}`;
   };
 
   // Render time period selector
@@ -231,7 +326,9 @@ export default function TokenDetailScreen() {
               styles.timePeriodButton,
               selectedTimeRange === period.value && {
                 backgroundColor:
-                  theme === "dark" ? colors.primaryLight : colors.primaryLight,
+                  theme === "dark"
+                    ? colors.primary + "30"
+                    : colors.primary + "20",
                 borderColor: colors.primary,
               },
             ]}
@@ -256,8 +353,6 @@ export default function TokenDetailScreen() {
 
   // Render the price chart
   const renderPriceChart = () => {
-    const chartColor = tokenPriceChange >= 0 ? colors.success : colors.error;
-
     if (chartLoading) {
       return (
         <View style={styles.chartLoadingContainer}>
@@ -292,54 +387,122 @@ export default function TokenDetailScreen() {
 
     return (
       <View style={styles.chartContainer}>
-        <LineChart.Provider data={chartData}>
-          <LineChart height={200} width={SCREEN_WIDTH - 32}>
-            <LineChart.Path color={chartColor}>
-              <LineChart.Gradient color={chartColor} />
-            </LineChart.Path>
-            <LineChart.CursorCrosshair
-              color={chartColor}
-              onActivated={handleChartHaptic}
-              onEnded={handleChartHaptic}>
-              <LineChart.Tooltip
-                textStyle={{
-                  color: colors.text,
-                  fontWeight: "bold",
-                  fontSize: 14,
-                  padding: 4,
-                  backgroundColor: theme === "dark" ? colors.card : "#FFF",
-                  borderRadius: 4,
-                  overflow: "hidden",
-                  borderWidth: 1,
-                  borderColor: colors.border,
-                }}
-              />
-            </LineChart.CursorCrosshair>
-          </LineChart>
-          <View style={styles.chartLabelsContainer}>
-            <LineChart.PriceText
-              style={[styles.priceLabel, { color: colors.text }]}
-              precision={tokenDecimals > 2 ? tokenDecimals : 2}
-              format={({ value }) => {
-                "worklet";
-                // invoke your JS formatter asynchronously on the JS thread
-                const formatted = runOnJS(formatUsdValue)(parseFloat(value));
-                return `${formatted}`;
-              }}
-            />
-            <LineChart.DatetimeText
-              style={[styles.dateTimeLabel, { color: colors.secondaryText }]}
-              locale="en-US"
-              options={{
-                year: "numeric",
-                month: "short",
-                day: "numeric",
-                hour: "numeric",
-                minute: "numeric",
-              }}
-            />
+        {/* Current Price Display (when not interacting with chart) */}
+        <View style={styles.currentPriceContainer}>
+          <View>
+            <Text style={[styles.currentPriceValue, { color: colors.text }]}>
+              {currentPrice
+                ? formatPriceForChart(currentPrice)
+                : formatPriceForChart(tokenPrice)}
+            </Text>
+            <Text
+              style={[
+                styles.currentPriceLabel,
+                { color: colors.secondaryText },
+              ]}>
+              Last updated: {getLastUpdatedText()}
+            </Text>
           </View>
-        </LineChart.Provider>
+        </View>
+
+        {chartData.length > 0 && (
+          <View style={styles.chartBox}>
+            <LineChart.Provider data={chartData}>
+              <LineChart height={200} width={SCREEN_WIDTH - 48}>
+                <LineChart.Path color={chartColor}>
+                  <LineChart.Gradient color={chartColor} />
+                </LineChart.Path>
+                <LineChart.CursorCrosshair
+                  color={chartColor}
+                  onActivated={handleChartHaptic}
+                  onEnded={handleChartHaptic}>
+                  <LineChart.Tooltip
+                    textStyle={{
+                      backgroundColor:
+                        theme === "dark" ? colors.card : "#FFFFFF",
+                      borderRadius: 6,
+                      borderWidth: 1,
+                      borderColor: colors.border,
+                      color: colors.text,
+                      fontSize: 14,
+                      fontWeight: "bold",
+                      padding: 6,
+                      paddingHorizontal: 10,
+                    }}
+                  />
+                </LineChart.CursorCrosshair>
+              </LineChart>
+
+              <View style={styles.chartLabelsContainer}>
+                <LineChart.PriceText
+                  precision={4}
+                  format={({ value }) => {
+                    "worklet";
+                    if (
+                      value === undefined ||
+                      value === null ||
+                      isNaN(parseFloat(String(value)))
+                    ) {
+                      return "$0.00";
+                    }
+
+                    const numValue = parseFloat(String(value));
+                    if (numValue >= 1000000) {
+                      return `$${(numValue / 1000000).toFixed(2)}M`;
+                    } else if (numValue >= 1000) {
+                      return `$${(numValue / 1000).toFixed(2)}K`;
+                    } else if (numValue >= 1) {
+                      return `$${numValue.toFixed(2)}`;
+                    } else if (numValue > 0) {
+                      return `$${numValue.toFixed(4)}`;
+                    }
+                    return "$0.00";
+                  }}
+                  style={[styles.priceLabel, { color: colors.text }]}
+                />
+                <LineChart.DatetimeText
+                  format={({ value }) => {
+                    "worklet";
+                    if (!value) return "";
+                    try {
+                      const date = new Date(value);
+                      return date.toLocaleString("en-US", {
+                        month: "short",
+                        day: "numeric",
+                        hour: "numeric",
+                        minute: "numeric",
+                        hour12: true,
+                      });
+                    } catch (e) {
+                      return "";
+                    }
+                  }}
+                  style={[
+                    styles.dateTimeLabel,
+                    { color: colors.secondaryText },
+                  ]}
+                />
+              </View>
+            </LineChart.Provider>
+          </View>
+        )}
+
+        {/* Min/Max Range Display */}
+        <View style={styles.priceRangeContainer}>
+          <Text
+            style={[styles.priceRangeText, { color: colors.secondaryText }]}>
+            {minValue ? formatPriceForChart(minValue) : "$0.00"}
+          </Text>
+          <Text
+            style={[styles.priceRangeText, { color: colors.secondaryText }]}>
+            {maxValue ? formatPriceForChart(maxValue) : "$0.00"}
+          </Text>
+        </View>
+
+        {/* Date Range Display */}
+        <Text style={[styles.dateRangeText, { color: colors.secondaryText }]}>
+          {getDateRangeText()}
+        </Text>
       </View>
     );
   };
@@ -415,7 +578,7 @@ export default function TokenDetailScreen() {
 
                 <View style={styles.tokenPriceContainer}>
                   <Text style={[styles.tokenPrice, { color: colors.text }]}>
-                    {formatUsdValue(tokenPrice)}
+                    {formatUsdPrice(tokenPrice)}
                   </Text>
                   <Text
                     style={[styles.priceChange, { color: priceChangeColor }]}>
@@ -436,18 +599,27 @@ export default function TokenDetailScreen() {
               </Text>
               <Text
                 style={[styles.tokenValue, { color: colors.secondaryText }]}>
-                {formatUsdValue(tokenValue)}
+                {formatUsdPrice(tokenValue)}
               </Text>
             </View>
           </View>
 
           {/* Chart Container */}
-          <View
-            style={[styles.chartContainer, { backgroundColor: colors.card }]}>
+          <View style={[styles.chartWrapper, { backgroundColor: colors.card }]}>
             <View style={styles.chartHeader}>
               <Text style={[styles.sectionTitle, { color: colors.text }]}>
                 Price Chart
               </Text>
+              <TouchableOpacity
+                onPress={handleRefresh}
+                disabled={refreshing}
+                style={styles.refreshButton}>
+                {refreshing ? (
+                  <ActivityIndicator size="small" color={colors.primary} />
+                ) : (
+                  <Ionicons name="refresh" size={20} color={colors.primary} />
+                )}
+              </TouchableOpacity>
             </View>
 
             {renderTimePeriodSelector()}
@@ -585,7 +757,7 @@ export default function TokenDetailScreen() {
                     Market Cap
                   </Text>
                   <Text style={[styles.detailValue, { color: colors.text }]}>
-                    {formatUsdValue(parseFloat(tokenInfo.data.marketCap))}
+                    {formatUsdPrice(parseFloat(tokenInfo.data.marketCap))}
                   </Text>
                 </View>
               )}
@@ -600,7 +772,7 @@ export default function TokenDetailScreen() {
                     24h Volume
                   </Text>
                   <Text style={[styles.detailValue, { color: colors.text }]}>
-                    {formatUsdValue(tokenInfo.data.volume24hUSD)}
+                    {formatUsdPrice(tokenInfo.data.volume24hUSD)}
                   </Text>
                 </View>
               )}
@@ -820,45 +992,90 @@ const styles = StyleSheet.create({
   tokenValue: {
     fontSize: 14,
   },
-  chartContainer: {
+  chartWrapper: {
     margin: 16,
     marginTop: 0,
     borderRadius: 16,
     overflow: "hidden",
+    paddingBottom: 20,
+  },
+  chartContainer: {
+    paddingHorizontal: 20,
+    paddingBottom: 16,
+  },
+  chartBox: {
+    marginVertical: 8,
+    paddingVertical: 8,
   },
   chartHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
     padding: 16,
+    paddingHorizontal: 20,
     borderBottomWidth: 1,
     borderBottomColor: "rgba(0,0,0,0.05)",
+  },
+  refreshButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: "transparent",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  currentPriceContainer: {
+    marginVertical: 12,
+    marginHorizontal: 4,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  currentPriceValue: {
+    fontSize: 32,
+    fontWeight: "bold",
+  },
+  currentPriceLabel: {
+    fontSize: 12,
+    marginTop: 4,
+  },
+  priceRangeContainer: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginTop: 16,
+    paddingHorizontal: 4,
+  },
+  priceRangeText: {
+    fontSize: 12,
+  },
+  dateRangeText: {
+    fontSize: 12,
+    textAlign: "center",
+    marginTop: 12,
+    marginBottom: 4,
   },
   chartLoadingContainer: {
     height: 200,
     justifyContent: "center",
     alignItems: "center",
-    margin: 16,
-    borderRadius: 8,
+    padding: 16,
   },
   chartErrorContainer: {
     height: 200,
     justifyContent: "center",
     alignItems: "center",
-    margin: 16,
-    borderRadius: 8,
+    padding: 16,
   },
   chartErrorText: {
     fontSize: 14,
     marginVertical: 8,
     textAlign: "center",
   },
-  comingSoonText: {
-    fontSize: 16,
-    fontWeight: "600",
-  },
   timePeriodSelector: {
     flexDirection: "row",
     justifyContent: "space-between",
-    paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingHorizontal: 20,
+    paddingVertical: 16,
   },
   timePeriodButton: {
     paddingHorizontal: 12,
@@ -875,8 +1092,9 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    paddingHorizontal: 16,
-    paddingBottom: 16,
+    paddingTop: 16,
+    paddingHorizontal: 4,
+    marginTop: 8,
   },
   priceLabel: {
     fontSize: 16,
@@ -884,6 +1102,7 @@ const styles = StyleSheet.create({
   },
   dateTimeLabel: {
     fontSize: 12,
+    fontWeight: "500",
   },
   detailsContainer: {
     margin: 16,
