@@ -60,7 +60,7 @@ export default function PortfolioScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [initialLoading, setInitialLoading] = useState(true);
   // Add state for verified tokens toggle
-  const [showVerifiedOnly, setShowVerifiedOnly] = useState(false);
+  const [showVerifiedOnly, setShowVerifiedOnly] = useState(true);
 
   // Ref for the interval to update portfolio data
   const updateIntervalRef = useRef<NodeJS.Timeout | null>(null);
