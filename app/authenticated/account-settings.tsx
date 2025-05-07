@@ -116,7 +116,7 @@ export default function AccountSettings() {
   };
 
   const navigateToAccountDetails = (accountId: string) => {
-    router.push(`/authenticated/(account)/account-details?id=${accountId}`);
+    router.push(`/authenticated/account-details?id=${accountId}`);
   };
 
   // Get wallet initials

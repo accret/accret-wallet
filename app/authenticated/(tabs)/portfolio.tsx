@@ -178,7 +178,7 @@ export default function PortfolioScreen() {
 
   // Navigate to account settings
   const navigateToAccountSettings = () => {
-    router.push("/authenticated/(account)/account-settings");
+    router.push("/authenticated/account-settings");
   };
 
   // Handle token press

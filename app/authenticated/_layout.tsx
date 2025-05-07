@@ -62,13 +62,6 @@ export default function AuthenticatedLayout() {
             gestureEnabled: true,
           }}
         />
-        <Stack.Screen
-          name="(account)"
-          options={{
-            headerShown: false,
-            gestureEnabled: true,
-          }}
-        />
       </Stack>
     </SafeAreaView>
   );

@@ -30,7 +30,7 @@ export default function SettingsScreen() {
   }, []);
 
   const navigateToAccountSettings = () => {
-    router.push("/authenticated/(account)/account-settings");
+    router.push("/authenticated/account-settings");
   };
 
   const getWalletInitials = (name: string) => {
