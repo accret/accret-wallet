@@ -33,9 +33,11 @@ const TIME_PERIODS = [
   { label: "ALL", value: "ALL" },
 ];
 
-// Function to format USD value (duplicated here to avoid worklet issues)
+// Improved function to format USD value with consistent B, M, K abbreviations
 const formatUsdPrice = (value: number): string => {
-  if (value >= 1000000) {
+  if (value >= 1000000000) {
+    return `$${(value / 1000000000).toFixed(2)}B`;
+  } else if (value >= 1000000) {
     return `$${(value / 1000000).toFixed(2)}M`;
   } else if (value >= 1000) {
     return `$${(value / 1000).toFixed(2)}K`;
@@ -51,7 +53,9 @@ const formatUsdPrice = (value: number): string => {
 const formatPriceForChart = (value: number): string => {
   if (isNaN(value)) return "$0.00";
 
-  if (value >= 1000000) {
+  if (value >= 1000000000) {
+    return `$${(value / 1000000000).toFixed(2)}B`;
+  } else if (value >= 1000000) {
     return `$${(value / 1000000).toFixed(2)}M`;
   } else if (value >= 1000) {
     return `$${(value / 1000).toFixed(2)}K`;
@@ -61,6 +65,18 @@ const formatPriceForChart = (value: number): string => {
     return `$${value.toFixed(4)}`;
   }
   return "$0.00";
+};
+
+// Format number with abbreviations
+const formatNumber = (value: number): string => {
+  if (value >= 1000000000) {
+    return `${(value / 1000000000).toFixed(2)}B`;
+  } else if (value >= 1000000) {
+    return `${(value / 1000000).toFixed(2)}M`;
+  } else if (value >= 1000) {
+    return `${(value / 1000).toFixed(2)}K`;
+  }
+  return value.toLocaleString();
 };
 
 // Format date in a consistent way
@@ -324,13 +340,16 @@ export default function TokenDetailScreen() {
             key={period.value}
             style={[
               styles.timePeriodButton,
-              selectedTimeRange === period.value && {
-                backgroundColor:
-                  theme === "dark"
-                    ? colors.primary + "30"
-                    : colors.primary + "20",
-                borderColor: colors.primary,
-              },
+              selectedTimeRange === period.value && [
+                styles.activeTabOption,
+                {
+                  backgroundColor:
+                    theme === "dark"
+                      ? colors.primary + "30"
+                      : colors.primary + "20",
+                  borderColor: colors.primary,
+                },
+              ],
             ]}
             onPress={() => handleTimeRangeSelect(period.value)}>
             <Text
@@ -447,7 +466,9 @@ export default function TokenDetailScreen() {
                     }
 
                     const numValue = parseFloat(String(value));
-                    if (numValue >= 1000000) {
+                    if (numValue >= 1000000000) {
+                      return `$${(numValue / 1000000000).toFixed(2)}B`;
+                    } else if (numValue >= 1000000) {
                       return `$${(numValue / 1000000).toFixed(2)}M`;
                     } else if (numValue >= 1000) {
                       return `$${(numValue / 1000).toFixed(2)}K`;
@@ -474,6 +495,7 @@ export default function TokenDetailScreen() {
                         hour12: true,
                       });
                     } catch (e) {
+                      console.log(e);
                       return "";
                     }
                   }}
@@ -503,6 +525,70 @@ export default function TokenDetailScreen() {
         <Text style={[styles.dateRangeText, { color: colors.secondaryText }]}>
           {getDateRangeText()}
         </Text>
+      </View>
+    );
+  };
+
+  // Render Token Basic Info component
+  const renderTokenBasicInfo = () => {
+    // Calculate current token value based on current price
+    const calculatedTokenValue = currentPrice
+      ? parseFloat(formatTokenAmount(tokenAmount || "0", tokenDecimals)) *
+        currentPrice
+      : tokenValue;
+
+    return (
+      <View style={[styles.tokenBasicInfo, { backgroundColor: colors.card }]}>
+        <View style={styles.tokenHeader}>
+          <View style={styles.tokenLogoContainer}>
+            {tokenLogo && !imageError ? (
+              <Image
+                source={{ uri: getLogoUri(tokenLogo) }}
+                style={styles.tokenLogo}
+                onError={() => setImageError(true)}
+              />
+            ) : (
+              <TokenPlaceholderIcon
+                width={64}
+                height={64}
+                symbol={tokenSymbol || "??"}
+              />
+            )}
+          </View>
+
+          <View style={styles.tokenHeaderInfo}>
+            <Text style={[styles.tokenName, { color: colors.text }]}>
+              {tokenName || "Unknown Token"}
+            </Text>
+            <Text style={[styles.tokenSymbol, { color: colors.secondaryText }]}>
+              {tokenSymbol || "???"}
+            </Text>
+
+            <View style={styles.tokenPriceContainer}>
+              <Text style={[styles.tokenPrice, { color: colors.text }]}>
+                {currentPrice
+                  ? formatUsdPrice(currentPrice)
+                  : formatUsdPrice(tokenPrice)}
+              </Text>
+              <Text
+                style={[styles.priceChangeSmall, { color: priceChangeColor }]}>
+                {formattedPriceChange}
+              </Text>
+            </View>
+          </View>
+        </View>
+
+        <View style={styles.tokenBalanceContainer}>
+          <Text style={[styles.balanceLabel, { color: colors.secondaryText }]}>
+            Your Balance
+          </Text>
+          <Text style={[styles.tokenBalance, { color: colors.text }]}>
+            {formatTokenAmount(tokenAmount || "0", tokenDecimals)} {tokenSymbol}
+          </Text>
+          <Text style={[styles.tokenValue, { color: colors.secondaryText }]}>
+            {formatUsdPrice(calculatedTokenValue)}
+          </Text>
+        </View>
       </View>
     );
   };
@@ -547,64 +633,7 @@ export default function TokenDetailScreen() {
         </View>
       ) : (
         <ScrollView style={styles.scrollContainer}>
-          {/* Token Basic Info */}
-          <View
-            style={[styles.tokenBasicInfo, { backgroundColor: colors.card }]}>
-            <View style={styles.tokenHeader}>
-              <View style={styles.tokenLogoContainer}>
-                {tokenLogo && !imageError ? (
-                  <Image
-                    source={{ uri: getLogoUri(tokenLogo) }}
-                    style={styles.tokenLogo}
-                    onError={() => setImageError(true)}
-                  />
-                ) : (
-                  <TokenPlaceholderIcon
-                    width={64}
-                    height={64}
-                    symbol={tokenSymbol || "??"}
-                  />
-                )}
-              </View>
-
-              <View style={styles.tokenHeaderInfo}>
-                <Text style={[styles.tokenName, { color: colors.text }]}>
-                  {tokenName || "Unknown Token"}
-                </Text>
-                <Text
-                  style={[styles.tokenSymbol, { color: colors.secondaryText }]}>
-                  {tokenSymbol || "???"}
-                </Text>
-
-                <View style={styles.tokenPriceContainer}>
-                  <Text style={[styles.tokenPrice, { color: colors.text }]}>
-                    {formatUsdPrice(tokenPrice)}
-                  </Text>
-                  <Text
-                    style={[styles.priceChange, { color: priceChangeColor }]}>
-                    {formattedPriceChange}
-                  </Text>
-                </View>
-              </View>
-            </View>
-
-            <View style={styles.tokenBalanceContainer}>
-              <Text
-                style={[styles.balanceLabel, { color: colors.secondaryText }]}>
-                Your Balance
-              </Text>
-              <Text style={[styles.tokenBalance, { color: colors.text }]}>
-                {formatTokenAmount(tokenAmount || "0", tokenDecimals)}{" "}
-                {tokenSymbol}
-              </Text>
-              <Text
-                style={[styles.tokenValue, { color: colors.secondaryText }]}>
-                {formatUsdPrice(tokenValue)}
-              </Text>
-            </View>
-          </View>
-
-          {/* Chart Container */}
+          {/* Chart Container - Now at the top */}
           <View style={[styles.chartWrapper, { backgroundColor: colors.card }]}>
             <View style={styles.chartHeader}>
               <Text style={[styles.sectionTitle, { color: colors.text }]}>
@@ -625,6 +654,9 @@ export default function TokenDetailScreen() {
             {renderTimePeriodSelector()}
             {renderPriceChart()}
           </View>
+
+          {/* Token Basic Info */}
+          {renderTokenBasicInfo()}
 
           {/* Token Details */}
           <View
@@ -693,7 +725,7 @@ export default function TokenDetailScreen() {
                   Total Supply
                 </Text>
                 <Text style={[styles.detailValue, { color: colors.text }]}>
-                  {parseFloat(tokenInfo.data.totalSupply).toLocaleString()}
+                  {formatNumber(parseFloat(tokenInfo.data.totalSupply))}
                 </Text>
               </View>
             )}
@@ -787,7 +819,7 @@ export default function TokenDetailScreen() {
                     24h Trades
                   </Text>
                   <Text style={[styles.detailValue, { color: colors.text }]}>
-                    {tokenInfo.data.trades24h.toLocaleString()}
+                    {formatNumber(tokenInfo.data.trades24h)}
                   </Text>
                 </View>
               )}
@@ -802,7 +834,7 @@ export default function TokenDetailScreen() {
                     Unique Wallets (24h)
                   </Text>
                   <Text style={[styles.detailValue, { color: colors.text }]}>
-                    {tokenInfo.data.uniqueWallets24h.toLocaleString()}
+                    {formatNumber(tokenInfo.data.uniqueWallets24h)}
                   </Text>
                 </View>
               )}
@@ -934,6 +966,7 @@ const styles = StyleSheet.create({
   },
   tokenBasicInfo: {
     margin: 16,
+    marginTop: 0,
     borderRadius: 16,
     overflow: "hidden",
   },
@@ -975,6 +1008,11 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: "500",
   },
+  priceChangeSmall: {
+    fontSize: 12,
+    fontWeight: "500",
+    marginLeft: 6,
+  },
   tokenBalanceContainer: {
     padding: 16,
     borderTopWidth: 1,
@@ -994,7 +1032,6 @@ const styles = StyleSheet.create({
   },
   chartWrapper: {
     margin: 16,
-    marginTop: 0,
     borderRadius: 16,
     overflow: "hidden",
     paddingBottom: 20,
@@ -1087,6 +1124,9 @@ const styles = StyleSheet.create({
   timePeriodText: {
     fontSize: 12,
     fontWeight: "600",
+  },
+  activeTabOption: {
+    // Will be set dynamically
   },
   chartLabelsContainer: {
     flexDirection: "row",
