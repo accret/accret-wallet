@@ -11,7 +11,7 @@ interface TokenPlaceholderIconProps {
 export default function TokenPlaceholderIcon({
   width = 40,
   height = 40,
-  symbol = "??",
+  symbol = "?",
 }: TokenPlaceholderIconProps) {
   const { colors } = useTheme();
 

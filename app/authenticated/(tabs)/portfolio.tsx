@@ -1,5 +1,3 @@
-// Updated app/authenticated/(tabs)/portfolio.tsx with token verification toggle
-
 import React, { useEffect, useState, useCallback, useRef } from "react";
 import {
   StyleSheet,

@@ -1,4 +1,3 @@
-// File: accret-wallet/app/authenticated/_layout.tsx (updated)
 import React from "react";
 import { useEffect } from "react";
 import { useTheme } from "@/theme";
