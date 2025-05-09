@@ -233,12 +233,10 @@ export async function createEncodedTokenTransferInstruction({
   tokenMintAddress,
   recipientAddress,
   amount,
-  network,
 }: {
   tokenMintAddress: string;
   recipientAddress: string;
   amount: number;
-  network: "solana:101" | "solana:102" | "solana:103";
 }): Promise<string> {
   const account = await getCurrentAccount();
 
