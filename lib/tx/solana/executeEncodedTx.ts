@@ -10,7 +10,7 @@ import {
 } from "@solana/web3.js";
 import { getRpcUrl } from "@/lib/tx/rpcUrl";
 
-export default async function executeEncodedTx(
+export async function executeEncodedTx(
   encodedInstruction: string,
 ): Promise<RpcResponseAndContext<SignatureResult>> {
   const account = await getCurrentAccount();
