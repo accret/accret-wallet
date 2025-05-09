@@ -7,7 +7,7 @@ import {
   SafeAreaView,
   Alert,
 } from "react-native";
-import { useRouter } from "expo-router";
+import { useRouter, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import {
   CameraView,
@@ -18,11 +18,21 @@ import * as Haptics from "expo-haptics";
 import { useTheme } from "@/theme";
 import { StatusBar } from "expo-status-bar";
 
+// Define address regex patterns for chain detection
+const ADDRESS_PATTERNS = {
+  solana: /^[1-9A-HJ-NP-Za-km-z]{32,44}$/,
+  ethereum: /^(0x)?[0-9a-fA-F]{40}$/,
+};
+
 export default function ScanScreen() {
   const { colors, theme } = useTheme();
   const router = useRouter();
+  const params = useLocalSearchParams();
   const [permission, requestPermission] = useCameraPermissions();
   const [scanned, setScanned] = useState<boolean>(false);
+
+  // Get the chainId from params (if provided)
+  const chainId = params.chainId as string;
 
   const handleBarCodeScanned = (scanningResult: BarcodeScanningResult) => {
     if (scanned) return;
@@ -35,71 +45,58 @@ export default function ScanScreen() {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
 
     try {
-      // Check if the data matches a Solana address pattern
-      // Basic validation for Solana addresses: should start with a base58 character
-      // and be between 32-44 characters long
-      const solanaAddressRegex = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
+      // If the scanned data contains a valid address
+      let detectedAddress = extractAddress(data);
+      let detectedChainId = detectChainFromAddress(detectedAddress || data);
 
-      // Check if the data matches an Ethereum address pattern
-      const ethAddressRegex = /^(0x)?[0-9a-fA-F]{40}$/;
+      if (detectedAddress && detectedChainId) {
+        // If we already have a chainId from params, check if it matches
+        if (chainId && chainId !== detectedChainId) {
+          // Chain mismatch warning
+          Alert.alert(
+            "Address Type Mismatch",
+            `The scanned address is for ${getChainName(detectedChainId)}, but you're trying to send from ${getChainName(chainId)}.`,
+            [
+              {
+                text: "Cancel",
+                onPress: () => setScanned(false),
+                style: "cancel",
+              },
+              {
+                text: "Continue Anyway",
+                onPress: () => {
+                  // Navigate to send page with the detected address but use the originally selected chain
+                  router.push({
+                    pathname: "/authenticated/send",
+                    params: {
+                      recipientAddress: detectedAddress,
+                      chainId: chainId,
+                    },
+                  });
+                },
+              },
+            ],
+          );
+          return;
+        }
 
-      // Additional check for URLs that might contain addresses
-      const urlWithAddressRegex =
-        /(?:solana:|ethereum:|[\/?&]address=)([1-9A-HJ-NP-Za-km-z]{32,44}|0x[0-9a-fA-F]{40})/i;
-
-      // Direct match for Solana address
-      if (solanaAddressRegex.test(data)) {
-        // Here you would navigate to send page with the address
-        Alert.alert("Solana Address Found", `Scanned address: ${data}`, [
-          {
-            text: "Cancel",
-            onPress: () => setScanned(false),
-            style: "cancel",
+        // Navigate to send page with the address and detected chain
+        router.push({
+          pathname: "/authenticated/send",
+          params: {
+            recipientAddress: detectedAddress,
+            chainId: detectedChainId,
           },
-          {
-            text: "Continue",
-            onPress: () => {
-              // Navigate to send page with the address
-              // router.push({ pathname: "/authenticated/send", params: { recipientAddress: data } });
-              setScanned(false);
-              router.back();
-            },
-          },
-        ]);
+        });
         return;
       }
 
-      // Direct match for Ethereum address
-      if (ethAddressRegex.test(data)) {
-        Alert.alert("Ethereum Address Found", `Scanned address: ${data}`, [
-          {
-            text: "Cancel",
-            onPress: () => setScanned(false),
-            style: "cancel",
-          },
-          {
-            text: "Continue",
-            onPress: () => {
-              // Navigate to send page with the address
-              // router.push({ pathname: "/authenticated/send", params: { recipientAddress: data } });
-              setScanned(false);
-              router.back();
-            },
-          },
-        ]);
-        return;
-      }
-
-      // Check for address in URL format
-      const urlMatch = data.match(urlWithAddressRegex);
-      if (urlMatch && urlMatch[1]) {
-        const address = urlMatch[1];
-        const isSolana = solanaAddressRegex.test(address);
-        const isEthereum = ethAddressRegex.test(address);
-
+      // If no address is detected but a chainId is provided via params
+      if (chainId) {
+        // Ask if they want to use the scanned text as an address
         Alert.alert(
-          `${isSolana ? "Solana" : isEthereum ? "Ethereum" : "Wallet"} Address Found in URL`,
-          `Extracted address: ${address}`,
+          "Use as Address?",
+          `The scanned text doesn't look like a valid address. Do you want to use it as a ${getChainName(chainId)} address?`,
           [
             {
               text: "Cancel",
@@ -107,12 +104,15 @@ export default function ScanScreen() {
               style: "cancel",
             },
             {
-              text: "Continue",
+              text: "Use as Address",
               onPress: () => {
-                // Navigate to send page with the address
-                // router.push({ pathname: "/authenticated/send", params: { recipientAddress: address } });
-                setScanned(false);
-                router.back();
+                router.push({
+                  pathname: "/authenticated/send",
+                  params: {
+                    recipientAddress: data,
+                    chainId: chainId,
+                  },
+                });
               },
             },
           ],
@@ -120,10 +120,10 @@ export default function ScanScreen() {
         return;
       }
 
-      // If we got here, it's not a recognized format
+      // If no address pattern is detected and no chainId provided
       Alert.alert(
-        "Invalid QR Code",
-        "The scanned QR code does not contain a valid Solana or Ethereum wallet address.",
+        "Unknown QR Code",
+        "The scanned QR code does not contain a recognized wallet address.",
         [{ text: "OK", onPress: () => setScanned(false) }],
       );
     } catch (error) {
@@ -132,6 +132,55 @@ export default function ScanScreen() {
         { text: "OK", onPress: () => setScanned(false) },
       ]);
     }
+  };
+
+  // Extract address from URL or plain text
+  const extractAddress = (text: string): string | null => {
+    // Check for URLs with addresses
+    const urlWithAddressRegex =
+      /(?:solana:|ethereum:|[\/?&]address=)([1-9A-HJ-NP-Za-km-z]{32,44}|0x[0-9a-fA-F]{40})/i;
+    const urlMatch = text.match(urlWithAddressRegex);
+
+    if (urlMatch && urlMatch[1]) {
+      return urlMatch[1];
+    }
+
+    // No URL pattern found, treat as plain address
+    return text;
+  };
+
+  // Detect which chain an address belongs to
+  const detectChainFromAddress = (address: string): string | null => {
+    // Check Solana address pattern
+    if (ADDRESS_PATTERNS.solana.test(address)) {
+      return "solana:101";
+    }
+
+    // Check Ethereum/EVM address pattern
+    if (ADDRESS_PATTERNS.ethereum.test(address)) {
+      // If we have a specific chainId from params, use that as the EVM chain
+      if (chainId && chainId.startsWith("eip155:")) {
+        return chainId;
+      }
+
+      // Default to Ethereum mainnet if no specific EVM chain is selected
+      return "eip155:1";
+    }
+
+    return null;
+  };
+
+  // Get human-readable chain name
+  const getChainName = (id: string): string => {
+    const chainMap: Record<string, string> = {
+      "solana:101": "Solana",
+      "eip155:1": "Ethereum",
+      "eip155:137": "Polygon",
+      "eip155:8453": "Base",
+      "eip155:42161": "Arbitrum",
+    };
+
+    return chainMap[id] || id;
   };
 
   if (!permission) {
@@ -211,7 +260,9 @@ export default function ScanScreen() {
           onPress={() => router.back()}>
           <Ionicons name="arrow-back" size={24} color="#FFFFFF" />
         </TouchableOpacity>
-        <Text style={[styles.title, { color: "#FFFFFF" }]}>Scan QR Code</Text>
+        <Text style={[styles.title, { color: "#FFFFFF" }]}>
+          Scan Address QR Code
+        </Text>
         <View style={styles.placeholder} />
       </View>
 
@@ -229,7 +280,9 @@ export default function ScanScreen() {
                 style={[styles.scannerBox, { borderColor: colors.primary }]}
               />
               <Text style={[styles.scannerText, { color: "#FFFFFF" }]}>
-                Scan a QR code containing a Solana or Ethereum wallet address
+                {chainId
+                  ? `Scan a ${getChainName(chainId)} address QR code`
+                  : "Scan a wallet address QR code"}
               </Text>
             </View>
           </View>

@@ -27,6 +27,7 @@ import {
   formatUsdValue,
   TokenWithPrice,
   PortfolioData,
+  formatTokenAmount,
 } from "@/lib/api/portfolioUtils";
 import ChainSection from "@/components/ChainSection";
 
@@ -170,8 +171,7 @@ export default function PortfolioScreen() {
   // Navigate to send screen
   const navigateToSend = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    // Placeholder for send screen navigation (not implemented yet)
-    Alert.alert("Coming Soon", "Send functionality will be available soon.");
+    router.push("/authenticated/send");
   };
 
   // Navigate to account settings
@@ -182,11 +182,80 @@ export default function PortfolioScreen() {
   // Handle token press
   const handleTokenPress = (token: TokenWithPrice) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    // Placeholder for token detail navigation (not implemented yet)
+
+    // Show action sheet with options
     Alert.alert(
       `${token.data.name} (${token.data.symbol})`,
-      `Chain: ${token.data.chain.name}\nBalance: ${formatUsdValue(token.usdValue)}`,
-      [{ text: "OK" }],
+      `Balance: ${formatTokenAmount(token.data.amount, token.data.decimals)} ${token.data.symbol}\nValue: ${formatUsdValue(token.usdValue)}`,
+      [
+        {
+          text: "View Details",
+          onPress: () => {
+            // Navigate to token details screen
+            let tokenAddress = "";
+
+            if (token.type === "ERC20") {
+              // For ERC20 tokens, use the contract address
+              const erc20Data = token.data as any;
+              tokenAddress = erc20Data.contractAddress;
+            } else if (token.type === "SPL") {
+              // For SPL tokens, use the mint address
+              const splData = token.data as any;
+              tokenAddress = splData.mintAddress;
+            } else {
+              // For native tokens, use slip44 format
+              const slip44Map: Record<string, string> = {
+                "solana:101": "slip44:501",
+                "eip155:1": "slip44:60",
+                "eip155:137": "slip44:966",
+                "eip155:8453": "slip44:8453",
+                "eip155:42161": "slip44:9001",
+              };
+              tokenAddress = slip44Map[token.data.chain.id] || "";
+            }
+
+            router.push({
+              pathname: "/authenticated/token-detail",
+              params: {
+                network: token.data.chain.id,
+                tokenAddress: tokenAddress,
+                name: token.data.name,
+                symbol: token.data.symbol,
+                logo: token.data.logoUri,
+                amount: token.data.amount,
+                decimals: token.data.decimals.toString(),
+                price: token.priceUsd.toString(),
+                priceChange: token.priceChange24h.toString(),
+                value: token.usdValue.toString(),
+              },
+            });
+          },
+        },
+        {
+          text: "Send",
+          onPress: () => {
+            // Navigate to send screen with pre-selected token chain
+            router.push({
+              pathname: "/authenticated/send",
+              params: {
+                chainId: token.data.chain.id,
+                preSelectedToken: JSON.stringify({
+                  type: token.type,
+                  data: {
+                    symbol: token.data.symbol,
+                    name: token.data.name,
+                    chainId: token.data.chain.id,
+                    logoUri: token.data.logoUri,
+                    amount: token.data.amount,
+                    decimals: token.data.decimals,
+                  },
+                }),
+              },
+            });
+          },
+        },
+        { text: "Cancel", style: "cancel" },
+      ],
     );
   };
 

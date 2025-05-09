@@ -8,7 +8,7 @@ type ChainId =
 export function getExplorerUrl(chainId: ChainId, txHash: string): string {
   switch (chainId) {
     case "solana:101":
-      return `https://solscan.io/tx/${txHash}`;
+      return `https://explorer.solana.com/tx/${txHash}`;
     case "eip155:1":
       return `https://etherscan.io/tx/${txHash}`;
     case "eip155:137":
