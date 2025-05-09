@@ -15,7 +15,7 @@ import {
   getAssociatedTokenAddress,
 } from "@solana/spl-token";
 import { getCurrentAccount } from "@/lib/accountStorage";
-import { solana_rpc_url } from "@/lib/tx/rpcUrl";
+import { getRpcUrl } from "@/lib/tx/rpcUrl";
 
 export interface TransactionFeeInfo {
   estimatedFee: number; // in SOL
@@ -45,7 +45,7 @@ export async function estimateTransactionFee({
     throw new Error("No Solana account found");
   }
 
-  const rpcUrl = solana_rpc_url;
+  const rpcUrl = getRpcUrl("solana:101");
   const connection = new Connection(rpcUrl, "confirmed");
   const sender = new PublicKey(solanaAccount.publicKey);
   const recipient = new PublicKey(recipientAddress);
@@ -252,7 +252,7 @@ export async function createEncodedTokenTransferInstruction({
     throw new Error("No Solana account found");
   }
 
-  const rpcUrl = solana_rpc_url;
+  const rpcUrl = getRpcUrl("solana:101");
   const connection = new Connection(rpcUrl, "confirmed");
   const sender = new PublicKey(solanaAccount.publicKey);
   const recipient = new PublicKey(recipientAddress);

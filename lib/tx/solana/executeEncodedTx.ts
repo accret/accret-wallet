@@ -8,7 +8,7 @@ import {
   VersionedTransaction,
   TransactionSignature,
 } from "@solana/web3.js";
-import { solana_rpc_url } from "@/lib/tx/rpcUrl";
+import { getRpcUrl } from "@/lib/tx/rpcUrl";
 
 export default async function executeEncodedTx(
   encodedInstruction: string,
@@ -29,7 +29,7 @@ export default async function executeEncodedTx(
 
   const signer = Keypair.fromSecretKey(secretKeyDecoded);
 
-  const rpcUrl = solana_rpc_url;
+  const rpcUrl = getRpcUrl("solana:101");
 
   const connection = new Connection(rpcUrl, "confirmed");
 

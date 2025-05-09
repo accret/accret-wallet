@@ -1,15 +1,25 @@
 const api_key = "33ff93b152dd4681a4282c0e6cd4452a";
 
-const solana_rpc_url = `https://grateful-jerrie-fast-mainnet.helius-rpc.com`;
-const ethereum_rpc_url = `https://mainnet.infura.io/v3/${api_key}`;
-const polygon_rpc_url = `https://polygon-mainnet.infura.io/v3/${api_key}`;
-const base_rpc_url = `https://base-mainnet.infura.io/v3/${api_key}`;
-const arbitrum_rpc_url = `https://arbitrum-mainnet.infura.io/v3/${api_key}`;
+type ChainId =
+  | "solana:101" // Solana Mainnet
+  | "eip155:1" // Ethereum Mainnet
+  | "eip155:137" // Polygon Mainnet
+  | "eip155:8453" // Base Mainnet
+  | "eip155:42161"; // Arbitrum Mainnet
 
-export {
-  solana_rpc_url,
-  ethereum_rpc_url,
-  polygon_rpc_url,
-  base_rpc_url,
-  arbitrum_rpc_url,
-};
+export function getRpcUrl(chainId: ChainId) {
+  switch (chainId) {
+    case "solana:101":
+      return `https://grateful-jerrie-fast-mainnet.helius-rpc.com`;
+    case "eip155:1":
+      return `https://mainnet.infura.io/v3/${api_key}`;
+    case "eip155:137":
+      return `https://polygon-mainnet.infura.io/v3/${api_key}`;
+    case "eip155:8453":
+      return `https://base-mainnet.infura.io/v3/${api_key}`;
+    case "eip155:42161":
+      return `https://arbitrum-mainnet.infura.io/v3/${api_key}`;
+    default:
+      throw new Error(`Unsupported chainId: ${chainId}`);
+  }
+}
