@@ -78,6 +78,7 @@ export async function estimateTransactionFee({
       const estimatedGas = await tokenContract.transfer.estimateGas(
         recipientAddress,
         amountWithDecimals,
+        { from: wallet.address },
       );
       gasLimit = Number(estimatedGas);
     }
@@ -186,9 +187,10 @@ export async function createEncodedTokenTransferInstruction({
     const network = await provider.getNetwork();
     transaction.chainId = network.chainId;
 
-    // Create and serialize the transaction
+    // Create and serialize the transaction using the wallet
     const tx = await wallet.populateTransaction(transaction);
-    return ethers.Transaction.from(tx).serialized;
+    const signedTx = await wallet.signTransaction(tx);
+    return signedTx;
   } catch (error) {
     console.error("Error creating transaction:", error);
     throw new Error(
