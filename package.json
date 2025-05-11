@@ -19,6 +19,7 @@
   "dependencies": {
     "@ethereumjs/wallet": "^2.0.4",
     "@expo/vector-icons": "^14.0.2",
+    "@mayanfinance/swap-sdk": "^10.5.0",
     "@react-navigation/bottom-tabs": "^7.2.0",
     "@react-navigation/native": "^7.0.14",
     "@solana/spl-token": "^0.4.13",
