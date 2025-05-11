@@ -1503,7 +1503,8 @@ export default function SendScreen() {
                     (currentStep === SendStep.RECIPIENT &&
                       !detectedAddressType) ||
                     estimatingFee ||
-                    processingTransaction
+                    processingTransaction ||
+                    showChainMismatchWarning
                       ? colors.disabledButton
                       : colors.primary,
                 },
@@ -1512,7 +1513,8 @@ export default function SendScreen() {
               disabled={
                 (currentStep === SendStep.RECIPIENT && !detectedAddressType) ||
                 estimatingFee ||
-                processingTransaction
+                processingTransaction ||
+                showChainMismatchWarning
               }>
               {estimatingFee || processingTransaction ? (
                 <ActivityIndicator size="small" color="#FFFFFF" />
@@ -1593,12 +1595,14 @@ export default function SendScreen() {
 
         {/* Show cross-chain warning if applicable */}
         {showChainMismatchWarning && detectedChainId && selectedChain && (
-          <CrossChainWarning
-            detectedChain={detectedChainId}
-            selectedChain={selectedChain.id}
-            onDismiss={dismissChainMismatchWarning}
-            onSwitch={switchToDetectedChain}
-          />
+          <View style={styles.warningContainer}>
+            <CrossChainWarning
+              detectedChain={detectedChainId}
+              selectedChain={selectedChain.id}
+              onDismiss={dismissChainMismatchWarning}
+              onSwitch={switchToDetectedChain}
+            />
+          </View>
         )}
       </View>
     </KeyboardAvoidingView>
@@ -1666,6 +1670,13 @@ const styles = StyleSheet.create({
   stepDescription: {
     fontSize: 16,
     marginBottom: 24,
+  },
+  warningContainer: {
+    position: "absolute",
+    bottom: 80, // Position it above the button container
+    left: 16,
+    right: 16,
+    zIndex: 10, // Ensure it's above other content
   },
   bottomButtonContainer: {
     position: "absolute",
