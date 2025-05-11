@@ -32,7 +32,11 @@ import {
   ArbitrumIcon,
   TokenPlaceholderIcon,
 } from "@/icons";
-import { formatTokenAmount, formatUsdValue } from "@/lib/api/portfolioUtils";
+import {
+  formatTokenAmount,
+  formatUsdValue,
+  fetchTokenPriceUsd,
+} from "@/lib/api/portfolioUtils";
 import { TokenWithPrice } from "@/lib/api/portfolioUtils";
 import fetchTokens from "@/lib/api/tokens";
 import {
@@ -348,22 +352,52 @@ export default function SendScreen() {
         return;
       }
 
-      // Get token prices and create TokenWithPrice objects
-      // In a real app, you would fetch prices for these tokens
-      const tokensWithPrice = tokensData.tokens.map((token) => ({
-        ...token,
-        usdValue: 0, // These would be populated from a price feed in a real app
-        priceUsd: 0,
-        priceChange24h: 0,
-      }));
-
       // Filter tokens by the selected chain
-      const chainTokens = tokensWithPrice.filter(
+      const chainTokens = tokensData.tokens.filter(
         (token) => token.data.chain.id === chainId,
       );
 
-      // Find native token and put it first, then sort others by name
-      const sortedTokens = chainTokens.sort((a, b) => {
+      // Create array for tokens with prices
+      const tokensWithPrice = await Promise.all(
+        chainTokens.map(async (token) => {
+          let priceUsd = 0;
+          let priceChange24h = 0;
+
+          try {
+            // Use the fetchTokenPriceUsd function from portfolioUtils
+            const { price, priceChange24h: change } =
+              await fetchTokenPriceUsd(token);
+            priceUsd = price;
+            priceChange24h = change;
+          } catch (e) {
+            console.error(
+              `Failed to fetch price for token: ${token.data.symbol}`,
+              e,
+            );
+          }
+
+          // Calculate USD value based on token amount and price
+          const tokenAmount = parseFloat(
+            formatTokenAmount(token.data.amount, token.data.decimals),
+          );
+          const usdValue = tokenAmount * priceUsd;
+
+          return {
+            ...token,
+            usdValue,
+            priceUsd,
+            priceChange24h,
+          };
+        }),
+      );
+
+      // Filter tokens by the selected chain
+      const chainTokensWithPrices = tokensWithPrice.filter(
+        (token) => token.data.chain.id === chainId,
+      );
+
+      // Sort the tokens with prices
+      const sortedTokensWithPrices = chainTokensWithPrices.sort((a, b) => {
         // Native tokens first
         const aIsNative = a.type.includes("Native");
         const bIsNative = b.type.includes("Native");
@@ -393,8 +427,8 @@ export default function SendScreen() {
         return a.data.name.localeCompare(b.data.name);
       });
 
-      setTokens(sortedTokens);
-      setFilteredTokens(sortedTokens);
+      setTokens(sortedTokensWithPrices);
+      setFilteredTokens(sortedTokensWithPrices);
       setLoadingTokens(false);
     } catch (error) {
       console.error("Error loading tokens:", error);
@@ -1188,7 +1222,7 @@ export default function SendScreen() {
         </View>
 
         <Text style={[styles.amountInUsd, { color: colors.secondaryText }]}>
-          ≈ {formatUsdValue(tokenUsdValue)}
+          ≈ {formatUsdValue(tokenUsdValue, 4)}
         </Text>
       </View>
     );

@@ -76,20 +76,20 @@ export function formatTokenAmount(amount: string, decimals: number): string {
 }
 
 // Format USD value for display
-export function formatUsdValue(value: number): string {
+export function formatUsdValue(value: number, decimals: number = 2): string {
   if (value >= 1000000) {
-    return `$${(value / 1000000).toFixed(2)}M`;
+    return `$${(value / 1000000).toFixed(decimals)}M`;
   } else if (value >= 1000) {
-    return `$${(value / 1000).toFixed(2)}K`;
+    return `$${(value / 1000).toFixed(decimals)}K`;
   }
 
   // Format based on value size
   if (value >= 100) {
-    return `$${value.toFixed(2)}`;
+    return `$${value.toFixed(decimals)}`;
   } else if (value >= 1) {
-    return `$${value.toFixed(2)}`;
+    return `$${value.toFixed(decimals)}`;
   } else if (value > 0) {
-    return `$${value.toFixed(4)}`;
+    return `$${value.toFixed(decimals)}`;
   }
 
   return "$0.00";
