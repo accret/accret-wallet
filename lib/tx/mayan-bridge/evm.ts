@@ -29,21 +29,21 @@ export async function swapEVM(quote: Quote, destAddr: string): Promise<string> {
   const wallet = new Wallet(privateKey);
 
   // Get provider based on the chain
-  const chainId = quote.fromToken.chainId;
+  const chainId = quote.fromChain;
   let chain: "eip155:1" | "eip155:137" | "eip155:8453" | "eip155:42161";
 
   // Convert chain ID number to our format
   switch (chainId) {
-    case 1:
+    case "ethereum":
       chain = "eip155:1"; // Ethereum
       break;
-    case 137:
+    case "polygon":
       chain = "eip155:137"; // Polygon
       break;
-    case 8453:
+    case "base":
       chain = "eip155:8453"; // Base
       break;
-    case 42161:
+    case "arbitrum":
       chain = "eip155:42161"; // Arbitrum
       break;
     default:
