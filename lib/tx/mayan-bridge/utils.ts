@@ -1,43 +1,51 @@
-import { createInterface } from "readline";
-import { Writable } from "stream";
+import { getCurrentAccount } from "@/lib/accountStorage";
 
-export async function getSecureInput(promptText: string): Promise<string> {
-  const mutableStdout = new Writable({
-    write: function (_: any, __: BufferEncoding, callback: () => void) {
-      callback();
-    },
-  });
+// Get current account's private key for the specified chain
+export async function getPrivateKeyForChain(
+  chain: "solana" | "evm",
+): Promise<string> {
+  const account = await getCurrentAccount();
 
-  const rl = createInterface({
-    input: process.stdin,
-    output: mutableStdout,
-    terminal: true,
-  });
+  if (chain === "solana") {
+    if (!account?.svm) {
+      throw new Error("No Solana account available");
+    }
+    return account.svm.privateKey;
+  } else if (chain === "evm") {
+    if (!account?.evm) {
+      throw new Error("No EVM account available");
+    }
+    return account.evm.privateKey;
+  }
 
-  process.stdout.write(promptText);
-
-  return new Promise<string>((resolve) => {
-    rl.question("", (answer: string) => {
-      rl.close();
-      process.stdout.write("\n");
-      resolve(answer);
-    });
-  });
+  throw new Error(`Unsupported chain type: ${chain}`);
 }
 
-export async function getPrivateKey(
-  envVarName: string,
-  promptMessage: string,
-): Promise<string> {
-  // eslint-disable-next-line expo/no-dynamic-env-var
-  let privateKey = process.env[envVarName];
-  if (!privateKey) {
-    privateKey = await getSecureInput(promptMessage);
-    if (!privateKey) {
-      throw new Error(
-        "Private key is required either in env file or as input.",
-      );
-    }
+// Format amount for display with correct decimal places
+export function formatAmount(
+  amount: number | string,
+  decimals: number,
+): string {
+  const numAmount = typeof amount === "string" ? parseFloat(amount) : amount;
+
+  if (isNaN(numAmount)) {
+    return "0";
   }
-  return privateKey;
+
+  // For very small amounts, use scientific notation
+  if (numAmount < 0.000001 && numAmount > 0) {
+    return numAmount.toExponential(6);
+  }
+
+  // For normal amounts, limit decimal places based on size
+  const precision =
+    numAmount >= 1 ? Math.min(6, decimals) : Math.min(8, decimals);
+
+  return numAmount.toFixed(precision);
+}
+
+// Calculate estimated fee for bridging
+export function calculateEstimatedFee(amount: number): number {
+  // Typical fee is around 0.3-0.5% of the amount
+  return amount * 0.004; // 0.4% fee
 }

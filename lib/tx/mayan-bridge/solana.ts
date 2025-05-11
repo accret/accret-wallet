@@ -2,23 +2,28 @@ import { type Quote, swapFromSolana } from "@mayanfinance/swap-sdk";
 import { Keypair } from "@solana/web3.js";
 import { Connection } from "@mayanfinance/swap-sdk/node_modules/@solana/web3.js";
 import bs58 from "bs58";
-import { getPrivateKey } from "./utils";
+import { getCurrentAccount } from "@/lib/accountStorage";
+import { getRpcUrl } from "@/lib/tx/rpcUrl";
 
 export async function swapSolana(
   quote: Quote,
   destAddr: string,
 ): Promise<string> {
-  const privateKey = await getPrivateKey(
-    "SOLANA_WALLET_PRIVATE_KEY",
-    "Please enter your Solana wallet private key: ",
-  );
+  // Get Solana wallet from account storage
+  const account = await getCurrentAccount();
+  if (!account?.svm) {
+    throw new Error("No Solana account found");
+  }
+
+  const privateKey = account.svm.privateKey;
   const privateKeyArray = bs58.decode(privateKey);
   const wallet = Keypair.fromSecretKey(privateKeyArray);
 
-  const connection = new Connection(
-    process.env.SOLANA_RPC_URL || "https://api.mainnet-beta.solana.com",
-  );
+  // Set up connection to Solana
+  const rpcUrl = getRpcUrl("solana:101");
+  const connection = new Connection(rpcUrl);
 
+  // Create transaction signer function
   const signer = async (trx: any) => {
     if ("version" in trx) {
       trx.sign([wallet]);
@@ -28,42 +33,63 @@ export async function swapSolana(
     return trx;
   };
 
-  const swapRes = await swapFromSolana(
-    quote,
-    wallet.publicKey.toString(),
-    destAddr,
-    null,
-    signer,
-    connection,
-    [],
-    { skipPreflight: true },
-  );
-  if (!swapRes.signature) {
-    throw new Error("error: try again");
-  }
-
   try {
-    const { blockhash, lastValidBlockHeight } =
-      await connection.getLatestBlockhash();
-    const result = await connection.confirmTransaction(
-      {
-        signature: swapRes.signature,
-        blockhash: blockhash,
-        lastValidBlockHeight: lastValidBlockHeight,
-      },
-      "confirmed",
+    // Execute the swap
+    const swapRes = await swapFromSolana(
+      quote,
+      wallet.publicKey.toString(),
+      destAddr,
+      null,
+      signer,
+      connection,
+      [],
+      { skipPreflight: true },
     );
-    if (result?.value.err) {
-      throw new Error(`Transaction ${swapRes.serializedTrx} reverted!`);
+
+    if (!swapRes.signature) {
+      throw new Error("Failed to execute Solana swap: No signature returned");
     }
-    return swapRes.signature;
+
+    // Confirm transaction
+    try {
+      const { blockhash, lastValidBlockHeight } =
+        await connection.getLatestBlockhash();
+
+      const result = await connection.confirmTransaction(
+        {
+          signature: swapRes.signature,
+          blockhash: blockhash,
+          lastValidBlockHeight: lastValidBlockHeight,
+        },
+        "confirmed",
+      );
+
+      if (result?.value.err) {
+        throw new Error(
+          `Transaction ${swapRes.signature} reverted: ${JSON.stringify(result.value.err)}`,
+        );
+      }
+
+      return swapRes.signature;
+    } catch (error) {
+      // As fallback, check if transaction exists via Mayan API
+      try {
+        const res = await fetch(
+          `https://explorer-api.mayan.finance/v3/swap/trx/${swapRes.signature}`,
+        );
+
+        if (res.status !== 200) {
+          throw error;
+        }
+
+        return swapRes.signature;
+      } catch (apiError) {
+        console.error("Error checking transaction status:", apiError);
+        throw error;
+      }
+    }
   } catch (error) {
-    const res = await fetch(
-      `https://explorer-api.mayan.finance/v3/swap/trx/${swapRes.signature}`,
-    );
-    if (res.status !== 200) {
-      throw error;
-    }
-    return swapRes.signature;
+    console.error("Error executing Solana swap:", error);
+    throw error;
   }
 }
