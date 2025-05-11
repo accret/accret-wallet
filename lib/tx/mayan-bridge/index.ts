@@ -1,123 +1,109 @@
-import { fetchQuote, type ChainName } from "@mayanfinance/swap-sdk";
+import { fetchQuote, type ChainName, type Quote } from "@mayanfinance/swap-sdk";
 import { swapSolana } from "./solana";
 import { swapEVM } from "./evm";
-import { createInterface } from "readline";
+import { formatAmount, calculateEstimatedFee } from "./utils";
 
-const { fromChain, fromToken, toChain, toToken, amount, destAddr } =
-  parseArgs();
-
-(async () => {
-  const quotes = await fetchQuote({
-    amount,
-    fromChain,
-    fromToken,
-    toChain,
-    toToken,
-    slippageBps: "auto",
-  });
-  if (quotes.length === 0) {
-    throw new Error("No quotes found");
-  }
-  const quote = quotes[0];
-
-  console.log("\nSwap Details:");
-  console.log(`From: ${quote.fromToken.name} (${quote.fromChain})`);
-  console.log(`To: ${quote.toToken.name} (${quote.toChain})`);
-  console.log(`Amount: ${amount}`);
-  console.log(`Minimum received: ${quote.minAmountOut}`);
-  const readline = createInterface({
-    input: process.stdin,
-    output: process.stdout,
-  });
-  const proceed = await new Promise<boolean>((resolve) => {
-    readline.question("\nProceed with swap? (y/n): ", (answer) => {
-      readline.close();
-      resolve(answer.toLowerCase() === "y" || answer.toLowerCase() === "yes");
-    });
-  });
-  if (!proceed) {
-    console.log("Swap cancelled by user");
-    process.exit(0);
-  }
-
-  let txHash;
-  if (quote.fromChain === "solana") {
-    txHash = await swapSolana(quote, destAddr);
-  } else {
-    txHash = await swapEVM(quote, destAddr);
-  }
-
-  console.log(
-    `Go and see your swap here: https://explorer.mayan.finance/swap/${txHash}`,
-  );
-})();
-
-function parseArgs(): {
+export interface BridgeParams {
   fromChain: ChainName;
   fromToken: string;
   toChain: ChainName;
   toToken: string;
   amount: number;
   destAddr: string;
-} {
-  const args = process.argv.slice(2);
-  const parsedArgs: Record<string, string> = {};
+  slippageBps?: string | number;
+}
 
-  for (let i = 0; i < args.length; i++) {
-    const arg = args[i];
-    if (arg.startsWith("--")) {
-      const flag = arg.substring(2);
-      const value = args[++i];
+export interface QuoteResult {
+  quote: Quote;
+  details: {
+    fromTokenName: string;
+    fromChain: string;
+    toTokenName: string;
+    toChain: string;
+    amount: string;
+    minAmountOut: string;
+    estimatedFee: string;
+  };
+}
 
-      switch (flag) {
-        case "from-chain":
-          parsedArgs.fromChain = value;
-          break;
-        case "from-token":
-          parsedArgs.fromToken = value;
-          break;
-        case "to-chain":
-          parsedArgs.toChain = value;
-          break;
-        case "to-token":
-          parsedArgs.toToken = value;
-          break;
-        case "amount":
-          parsedArgs.amount = value;
-          break;
-        case "dest-addr":
-          parsedArgs.destAddr = value;
-          break;
-      }
-    }
+/**
+ * Get a bridge quote for the specified parameters
+ */
+export async function getQuote(params: BridgeParams): Promise<QuoteResult> {
+  const { fromChain, fromToken, toChain, toToken, amount } = params;
+
+  const supportedChains = ["solana", "ethereum", "base", "polygon", "arbitrum"];
+  const referrerAddress = {
+    solana: "8tH6ptPMfzcupFCRWMy1RLhcz8kQvZPZ9mhYgTPR997B",
+    evm: "0x9e334e0ac5cAFfc090D0F831B623d46Eb596A227",
+  };
+  if (
+    !supportedChains.includes(fromChain) ||
+    !supportedChains.includes(toChain)
+  ) {
+    throw new Error(
+      "Chain not supported. Supported chains: solana, ethereum, base, polygon, arbitrum",
+    );
   }
 
-  const requiredArgs = [
-    "fromChain",
-    "fromToken",
-    "toChain",
-    "toToken",
-    "amount",
-    "destAddr",
-  ];
-  const missingArgs = requiredArgs.filter((arg) => !parsedArgs[arg]);
+  const referrer =
+    fromChain === "solana" || fromChain === "polygon"
+      ? referrerAddress.solana
+      : referrerAddress.evm;
 
-  if (missingArgs.length > 0) {
-    console.error(
-      `Error: Missing required arguments: ${missingArgs.map((arg) => `--${arg.replace(/([A-Z])/g, "-$1").toLowerCase()}`).join(", ")}`,
-    );
-    console.error(
-      `Usage: bun run main.ts --from-chain <chain> --from-token <token> --to-chain <chain> --to-token <token> --amount <amount> --dest-addr <address>`,
-    );
-    process.exit(1);
+  const quotes = await fetchQuote({
+    amount,
+    fromChain,
+    fromToken,
+    toChain,
+    toToken,
+    slippageBps: 300,
+    referrer,
+    referrerBps: 100,
+  });
+
+  if (quotes.length === 0) {
+    throw new Error("No quotes found for the specified parameters");
   }
+
+  const quote = quotes[0];
+  const estimatedFee = calculateEstimatedFee(amount);
 
   return {
-    fromChain: parsedArgs.fromChain as ChainName,
-    fromToken: parsedArgs.fromToken,
-    toChain: parsedArgs.toChain as ChainName,
-    toToken: parsedArgs.toToken,
-    amount: Number(parsedArgs.amount),
-    destAddr: parsedArgs.destAddr,
+    quote,
+    details: {
+      fromTokenName: quote.fromToken.name,
+      fromChain: quote.fromChain,
+      toTokenName: quote.toToken.name,
+      toChain: quote.toChain,
+      amount: formatAmount(amount, quote.fromToken.decimals),
+      minAmountOut: quote.minAmountOut.toString(),
+      estimatedFee: estimatedFee.toFixed(4),
+    },
   };
+}
+
+/**
+ * Execute a bridge transaction based on the provided quote
+ */
+export async function executeBridgeTransaction(
+  quote: Quote,
+  destAddr: string,
+): Promise<string> {
+  let txHash: string;
+
+  if (quote.fromChain === "solana") {
+    txHash = await swapSolana(quote, destAddr);
+  } else {
+    txHash = await swapEVM(quote, destAddr);
+  }
+
+  return txHash;
+}
+
+/**
+ * Get the explorer URL for a transaction
+ */
+export function getExplorerUrl(txHash: string): string {
+  return `https://explorer.mayan.finance/swap/${txHash}`;
 }
