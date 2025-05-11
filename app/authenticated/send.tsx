@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import {
   StyleSheet,
   Text,
@@ -91,10 +91,10 @@ const CHAINS = [
   },
 ];
 
-// Send flow steps
+// Modified Send flow steps - moved CHAIN_SELECT after RECIPIENT
 enum SendStep {
-  CHAIN_SELECT = "CHAIN_SELECT",
   RECIPIENT = "RECIPIENT",
+  CHAIN_SELECT = "CHAIN_SELECT",
   TOKEN_SELECT = "TOKEN_SELECT",
   AMOUNT = "AMOUNT",
   CONFIRM = "CONFIRM",
@@ -112,9 +112,7 @@ export default function SendScreen() {
   const preSelectedTokenParam = params.preSelectedToken as string;
 
   // State for the send flow
-  const [currentStep, setCurrentStep] = useState<SendStep>(
-    SendStep.CHAIN_SELECT,
-  );
+  const [currentStep, setCurrentStep] = useState<SendStep>(SendStep.RECIPIENT);
   const [selectedChain, setSelectedChain] = useState<(typeof CHAINS)[0] | null>(
     null,
   );
@@ -136,6 +134,11 @@ export default function SendScreen() {
   const [processingTransaction, setProcessingTransaction] = useState(false);
   const [transactionResult, setTransactionResult] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
+  const [detectedAddressType, setDetectedAddressType] = useState<
+    "EVM" | "SOLANA" | null
+  >(null);
+  const [tokenUsdValue, setTokenUsdValue] = useState<number>(0);
+  const [debouncedAmount, setDebouncedAmount] = useState<string>("");
 
   // Check if the wallet has the required accounts
   const [hasSVMAccount, setHasSVMAccount] = useState(false);
@@ -156,8 +159,32 @@ export default function SendScreen() {
   const [isAddressValid, setIsAddressValid] = useState(false);
   const [isValidatingAddress, setIsValidatingAddress] = useState(false);
 
+  // Detect address type
+  const detectAddressType = useCallback((address: string) => {
+    if (!address) {
+      setDetectedAddressType(null);
+      return;
+    }
+
+    // Check if it's a Solana address
+    if (CHAINS[0].addressRegex.test(address)) {
+      setDetectedAddressType("SOLANA");
+      return;
+    }
+
+    // Check if it's an EVM address (starts with 0x and has correct length)
+    if (address.startsWith("0x") && address.length === 42) {
+      setDetectedAddressType("EVM");
+      return;
+    }
+
+    setDetectedAddressType(null);
+  }, []);
+
   // Validate address when it changes
   useEffect(() => {
+    detectAddressType(recipientAddress);
+
     if (!recipientAddress || !selectedChain) {
       setIsAddressValid(false);
       return;
@@ -165,18 +192,54 @@ export default function SendScreen() {
 
     setIsValidatingAddress(true);
 
-    // Use timeout to simulate network validation (in a real app, you might check the address onchain)
+    // Use timeout to simulate network validation
     const timer = setTimeout(() => {
       setIsAddressValid(validateAddress(recipientAddress, selectedChain));
       setIsValidatingAddress(false);
     }, 500);
 
     return () => clearTimeout(timer);
-  }, [recipientAddress, selectedChain]); // Define address regex patterns for chain detection
-  const ADDRESS_PATTERNS = {
-    solana: /^[1-9A-HJ-NP-Za-km-z]{32,44}$/,
-    ethereum: /^(0x)?[0-9a-fA-F]{40}$/,
-  };
+  }, [recipientAddress, selectedChain, detectAddressType]);
+
+  // Set chain based on detected address type
+  useEffect(() => {
+    if (detectedAddressType === "SOLANA" && hasSVMAccount) {
+      // If Solana address detected and account exists, auto-select Solana
+      const solanaChain = CHAINS.find((chain) => chain.id === "solana:101");
+      if (solanaChain) {
+        setSelectedChain(solanaChain);
+      }
+    } else if (
+      detectedAddressType === "EVM" &&
+      hasEVMAccount &&
+      currentStep === SendStep.RECIPIENT
+    ) {
+      // If EVM address detected and account exists, proceed to chain selection
+      // setCurrentStep(SendStep.CHAIN_SELECT);
+    }
+  }, [detectedAddressType, hasSVMAccount, hasEVMAccount, currentStep]);
+
+  // Debounce amount changes
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedAmount(amount);
+    }, 500);
+
+    return () => {
+      clearTimeout(handler);
+    };
+  }, [amount]);
+
+  // Update token USD value when amount changes or token selection changes
+  useEffect(() => {
+    if (selectedToken && debouncedAmount) {
+      const numAmount = parseFloat(debouncedAmount) || 0;
+      const value = numAmount * (selectedToken.priceUsd || 0);
+      setTokenUsdValue(value);
+    } else {
+      setTokenUsdValue(0);
+    }
+  }, [debouncedAmount, selectedToken]);
 
   // Detect accounts
   useEffect(() => {
@@ -205,7 +268,6 @@ export default function SendScreen() {
               await loadTokensForChain(chain.id);
 
               // We'll select the token after tokens are loaded in another effect
-              setCurrentStep(SendStep.RECIPIENT);
             }
           } catch (e) {
             console.error("Error parsing pre-selected token:", e);
@@ -213,13 +275,12 @@ export default function SendScreen() {
         }
         // If coming from QR scan with a specific address, detect the chain
         else if (recipientFromParams) {
-          detectChainFromAddress(recipientFromParams);
+          detectAddressType(recipientFromParams);
         } else if (chainIdFromParams) {
           // If chain ID was passed, set it
           const chain = CHAINS.find((c) => c.id === chainIdFromParams);
           if (chain) {
             setSelectedChain(chain);
-            setCurrentStep(SendStep.RECIPIENT);
           }
         }
 
@@ -231,7 +292,12 @@ export default function SendScreen() {
     };
 
     checkAccounts();
-  }, [recipientFromParams, chainIdFromParams, preSelectedTokenParam]);
+  }, [
+    recipientFromParams,
+    chainIdFromParams,
+    preSelectedTokenParam,
+    detectAddressType,
+  ]);
 
   // Load tokens when chain is selected
   useEffect(() => {
@@ -255,10 +321,7 @@ export default function SendScreen() {
         if (matchingToken) {
           setSelectedToken(matchingToken);
           // Move to amount entry screen directly if we have a token
-          if (
-            currentStep === SendStep.RECIPIENT ||
-            currentStep === SendStep.TOKEN_SELECT
-          ) {
+          if (currentStep === SendStep.TOKEN_SELECT) {
             setCurrentStep(SendStep.AMOUNT);
           }
         }
@@ -357,34 +420,6 @@ export default function SendScreen() {
     setFilteredTokens(filtered);
   }, [searchQuery, tokens]);
 
-  // Detect chain from address
-  const detectChainFromAddress = (address: string) => {
-    // Try to match the address with chain patterns
-    for (const chain of CHAINS) {
-      if (chain.addressRegex.test(address)) {
-        // If we need to add 0x prefix for EVM addresses
-        const normalizedAddress =
-          chain.is_evm && !address.startsWith("0x") ? `0x${address}` : address;
-
-        setRecipientAddress(normalizedAddress);
-        setSelectedChain(chain);
-
-        // If we already have a chain and address, move to token selection
-        setCurrentStep(SendStep.TOKEN_SELECT);
-        return;
-      }
-    }
-
-    // If no match, just set the address and stay on chain selection
-    setRecipientAddress(address);
-    // Notify user
-    Alert.alert(
-      "Unknown Address Type",
-      "The scanned address format was not recognized. Please select a chain manually.",
-      [{ text: "OK" }],
-    );
-  };
-
   // State for address chain mismatch detection
   const [detectedChainId, setDetectedChainId] = useState<string | null>(null);
   const [showChainMismatchWarning, setShowChainMismatchWarning] =
@@ -393,13 +428,15 @@ export default function SendScreen() {
   // Detect which chain an address belongs to
   const detectAddressChain = (address: string): string | null => {
     // Check Solana address pattern
-    if (ADDRESS_PATTERNS.solana.test(address)) {
+    if (CHAINS[0].addressRegex.test(address)) {
       return "solana:101";
     }
 
     // Check Ethereum/EVM address pattern
-    if (ADDRESS_PATTERNS.ethereum.test(address)) {
-      return "eip155:1"; // Default to Ethereum mainnet for EVM addresses
+    for (let i = 1; i < CHAINS.length; i++) {
+      if (CHAINS[i].addressRegex.test(address)) {
+        return CHAINS[i].id; // Return the specific EVM chain ID
+      }
     }
 
     return null;
@@ -467,8 +504,8 @@ export default function SendScreen() {
       const clipboardText = await Clipboard.getStringAsync();
       if (clipboardText) {
         setRecipientAddress(clipboardText);
-        // Try to detect the chain
-        detectChainFromAddress(clipboardText);
+        // Try to detect the address type
+        detectAddressType(clipboardText);
       }
     } catch (error) {
       console.error("Failed to paste from clipboard:", error);
@@ -524,7 +561,9 @@ export default function SendScreen() {
     } catch (error) {
       console.error("Error estimating fee:", error);
       setError(
-        `Failed to estimate transaction fee: ${error instanceof Error ? error.message : String(error)}`,
+        `Failed to estimate transaction fee: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
       );
     } finally {
       setEstimatingFee(false);
@@ -587,7 +626,9 @@ export default function SendScreen() {
     } catch (error) {
       console.error("Error executing transaction:", error);
       setError(
-        `Transaction failed: ${error instanceof Error ? error.message : String(error)}`,
+        `Transaction failed: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
       );
       // Error vibration
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
@@ -609,7 +650,7 @@ export default function SendScreen() {
 
   // Reset the flow
   const resetFlow = () => {
-    setCurrentStep(SendStep.CHAIN_SELECT);
+    setCurrentStep(SendStep.RECIPIENT);
     setSelectedChain(null);
     setRecipientAddress("");
     setSelectedToken(null);
@@ -617,21 +658,29 @@ export default function SendScreen() {
     setFeeInfo(null);
     setTransactionResult(null);
     setError(null);
+    setDetectedAddressType(null);
   };
 
   // Handle going back in the flow
   const handleBack = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
 
-    if (currentStep === SendStep.CHAIN_SELECT) {
+    if (currentStep === SendStep.RECIPIENT) {
       router.back();
       return;
     }
 
-    if (currentStep === SendStep.RECIPIENT) {
-      setCurrentStep(SendStep.CHAIN_SELECT);
-    } else if (currentStep === SendStep.TOKEN_SELECT) {
+    if (currentStep === SendStep.CHAIN_SELECT) {
       setCurrentStep(SendStep.RECIPIENT);
+      setSelectedChain(null);
+    } else if (currentStep === SendStep.TOKEN_SELECT) {
+      // If we detected a SOLANA address, go back to RECIPIENT, otherwise to CHAIN_SELECT
+      if (detectedAddressType === "SOLANA") {
+        setCurrentStep(SendStep.RECIPIENT);
+        setSelectedChain(null);
+      } else {
+        setCurrentStep(SendStep.CHAIN_SELECT);
+      }
     } else if (currentStep === SendStep.AMOUNT) {
       setCurrentStep(SendStep.TOKEN_SELECT);
       setAmount("");
@@ -647,22 +696,53 @@ export default function SendScreen() {
   const handleNext = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
 
-    if (currentStep === SendStep.CHAIN_SELECT) {
-      if (!selectedChain) {
-        Alert.alert("Error", "Please select a blockchain");
-        return;
-      }
-      setCurrentStep(SendStep.RECIPIENT);
-    } else if (currentStep === SendStep.RECIPIENT) {
+    if (currentStep === SendStep.RECIPIENT) {
       if (!recipientAddress) {
         Alert.alert("Error", "Please enter a recipient address");
         return;
       }
 
-      if (!validateAddress(recipientAddress, selectedChain!)) {
+      // If we have a Solana address & Solana account, move to token selection
+      if (detectedAddressType === "SOLANA" && hasSVMAccount) {
+        const solanaChain = CHAINS.find((chain) => chain.id === "solana:101");
+        if (solanaChain) {
+          setSelectedChain(solanaChain);
+          setCurrentStep(SendStep.TOKEN_SELECT);
+        } else {
+          Alert.alert("Error", "Solana chain not found");
+        }
+      }
+      // If we have an EVM address & EVM account, move to chain selection
+      else if (detectedAddressType === "EVM" && hasEVMAccount) {
+        setCurrentStep(SendStep.CHAIN_SELECT);
+      }
+      // If no address type detected, show error
+      else if (!detectedAddressType) {
         Alert.alert(
           "Error",
-          `The address is not a valid ${selectedChain!.name} address`,
+          "Invalid address format. Please check and try again.",
+        );
+      }
+      // If we have an address type but no matching account, show error
+      else {
+        Alert.alert(
+          "Error",
+          `You don't have a ${
+            detectedAddressType === "SOLANA" ? "Solana" : "Ethereum"
+          } account set up in this wallet.`,
+        );
+      }
+    } else if (currentStep === SendStep.CHAIN_SELECT) {
+      if (!selectedChain) {
+        Alert.alert("Error", "Please select a blockchain");
+        return;
+      }
+
+      // Validate address for the selected chain
+      if (!validateAddress(recipientAddress, selectedChain)) {
+        Alert.alert(
+          "Error",
+          `The address is not a valid ${selectedChain.name} address`,
         );
         return;
       }
@@ -703,6 +783,26 @@ export default function SendScreen() {
     }
   };
 
+  // Get button text based on current step
+  const getButtonText = () => {
+    switch (currentStep) {
+      case SendStep.RECIPIENT:
+        return "Validate Address";
+      case SendStep.CHAIN_SELECT:
+        return "Select Chain";
+      case SendStep.TOKEN_SELECT:
+        return "Select Token";
+      case SendStep.AMOUNT:
+        return "Review Transaction";
+      case SendStep.CONFIRM:
+        return processingTransaction ? "Processing..." : "Send";
+      case SendStep.RESULT:
+        return "Done";
+      default:
+        return "Continue";
+    }
+  };
+
   // Get token logo URI with fallback
   const getTokenLogoUri = (token: TokenWithPrice) => {
     if (
@@ -714,76 +814,7 @@ export default function SendScreen() {
     return token.data.logoUri;
   };
 
-  // Render chain select screen
-  const renderChainSelectScreen = () => {
-    return (
-      <View style={styles.stepContainer}>
-        <Text style={[styles.stepTitle, { color: colors.text }]}>
-          Select Blockchain
-        </Text>
-        <Text style={[styles.stepDescription, { color: colors.secondaryText }]}>
-          Choose the blockchain network you want to use for this transaction
-        </Text>
-
-        <View style={styles.chainListContainer}>
-          {CHAINS.map((chain) => {
-            const isEnabled =
-              (chain.is_evm && hasEVMAccount) ||
-              (!chain.is_evm && hasSVMAccount);
-
-            return (
-              <TouchableOpacity
-                key={chain.id}
-                style={[
-                  styles.chainItem,
-                  {
-                    backgroundColor:
-                      selectedChain?.id === chain.id
-                        ? colors.primaryLight
-                        : theme === "dark"
-                          ? colors.card
-                          : "#FFFFFF",
-                    borderColor:
-                      selectedChain?.id === chain.id
-                        ? colors.primary
-                        : colors.border,
-                    opacity: isEnabled ? 1 : 0.5,
-                  },
-                ]}
-                onPress={() => {
-                  if (isEnabled) {
-                    Haptics.selectionAsync();
-                    setSelectedChain(chain);
-                  } else {
-                    Alert.alert(
-                      "Account Required",
-                      `You don't have a ${chain.name} account set up in this wallet.`,
-                    );
-                  }
-                }}
-                disabled={!isEnabled}>
-                <View style={styles.chainIconContainer}>
-                  <chain.icon width={24} height={24} />
-                </View>
-                <Text style={[styles.chainName, { color: colors.text }]}>
-                  {chain.name}
-                </Text>
-                {selectedChain?.id === chain.id && (
-                  <Ionicons
-                    name="checkmark-circle"
-                    size={20}
-                    color={colors.primary}
-                  />
-                )}
-              </TouchableOpacity>
-            );
-          })}
-        </View>
-      </View>
-    );
-  };
-
-  // Render recipient screen
+  // Render recipient screen as first step
   const renderRecipientScreen = () => {
     return (
       <View style={styles.stepContainer}>
@@ -791,17 +822,8 @@ export default function SendScreen() {
           Enter Recipient
         </Text>
         <Text style={[styles.stepDescription, { color: colors.secondaryText }]}>
-          Enter the {selectedChain?.name} address of the recipient
+          Enter the wallet address of the recipient
         </Text>
-
-        <View style={styles.chainBadge}>
-          <View style={styles.chainBadgeIconContainer}>
-            {selectedChain && <selectedChain.icon width={16} height={16} />}
-          </View>
-          <Text style={[styles.chainBadgeText, { color: colors.text }]}>
-            {selectedChain?.name}
-          </Text>
-        </View>
 
         <View
           style={[
@@ -813,7 +835,7 @@ export default function SendScreen() {
           ]}>
           <TextInput
             style={[styles.addressInput, { color: colors.text }]}
-            placeholder={`Enter ${selectedChain?.name} address`}
+            placeholder="Enter wallet address"
             placeholderTextColor={colors.tertiaryText}
             value={recipientAddress}
             onChangeText={setRecipientAddress}
@@ -844,22 +866,103 @@ export default function SendScreen() {
           recipient.
         </Text>
 
+        {detectedAddressType && (
+          <View
+            style={[
+              styles.detectedAddressBox,
+              {
+                backgroundColor: colors.primaryLight,
+                borderColor: colors.primary,
+                borderWidth: 1,
+              },
+            ]}>
+            <Ionicons
+              name="checkmark-circle"
+              size={20}
+              color={colors.primary}
+            />
+            <Text
+              style={[styles.detectedAddressText, { color: colors.primary }]}>
+              {detectedAddressType === "SOLANA"
+                ? "Solana address detected"
+                : "Ethereum compatible address detected"}
+            </Text>
+          </View>
+        )}
+
         <AddressValidation
           address={recipientAddress}
           chainName={selectedChain?.name || ""}
           isValid={isAddressValid}
           isValidating={isValidatingAddress}
         />
+      </View>
+    );
+  };
 
-        {/* Show cross-chain warning if applicable */}
-        {showChainMismatchWarning && detectedChainId && selectedChain && (
-          <CrossChainWarning
-            detectedChain={detectedChainId}
-            selectedChain={selectedChain.id}
-            onDismiss={dismissChainMismatchWarning}
-            onSwitch={switchToDetectedChain}
-          />
-        )}
+  // Render chain select screen (after recipient screen when EVM address is detected)
+  const renderChainSelectScreen = () => {
+    return (
+      <View style={styles.stepContainer}>
+        <Text style={[styles.stepTitle, { color: colors.text }]}>
+          Select Blockchain
+        </Text>
+        <Text style={[styles.stepDescription, { color: colors.secondaryText }]}>
+          Choose the blockchain network for this Ethereum address
+        </Text>
+
+        <View style={styles.chainListContainer}>
+          {CHAINS.filter((chain) => chain.is_evm).map((chain) => {
+            const isEnabled = hasEVMAccount;
+
+            return (
+              <TouchableOpacity
+                key={chain.id}
+                style={[
+                  styles.chainItem,
+                  {
+                    backgroundColor:
+                      selectedChain?.id === chain.id
+                        ? colors.primaryLight
+                        : theme === "dark"
+                          ? colors.card
+                          : "#FFFFFF",
+                    borderColor:
+                      selectedChain?.id === chain.id
+                        ? colors.primary
+                        : colors.border,
+                    opacity: isEnabled ? 1 : 0.5,
+                  },
+                ]}
+                onPress={() => {
+                  if (isEnabled) {
+                    Haptics.selectionAsync();
+                    setSelectedChain(chain);
+                  } else {
+                    Alert.alert(
+                      "Account Required",
+                      `You don't have an Ethereum account set up in this wallet.`,
+                    );
+                  }
+                }}
+                disabled={!isEnabled}>
+                <View style={styles.chainIconContainer}>
+                  <chain.icon width={24} height={24} />
+                </View>
+                <Text style={[styles.chainName, { color: colors.text }]}>
+                  {chain.name}
+                </Text>
+                {selectedChain?.id === chain.id && (
+                  <Ionicons
+                    name="checkmark-circle"
+                    size={20}
+                    color={colors.primary}
+                  />
+                )}
+              </TouchableOpacity>
+            );
+          })}
+        </View>
       </View>
     );
   };
@@ -1017,7 +1120,7 @@ export default function SendScreen() {
     );
   };
 
-  // Render amount input screen
+  // Render amount input screen with real-time USD value
   const renderAmountScreen = () => {
     const maxAmount = calculateMaxAmount();
 
@@ -1085,10 +1188,7 @@ export default function SendScreen() {
         </View>
 
         <Text style={[styles.amountInUsd, { color: colors.secondaryText }]}>
-          ≈{" "}
-          {formatUsdValue(
-            parseFloat(amount || "0") * (selectedToken?.priceUsd ?? 0),
-          )}
+          ≈ {formatUsdValue(tokenUsdValue)}
         </Text>
       </View>
     );
@@ -1264,13 +1364,33 @@ export default function SendScreen() {
     );
   };
 
+  // Get step title for the header
+  const getStepTitle = () => {
+    switch (currentStep) {
+      case SendStep.RECIPIENT:
+        return "Send Tokens";
+      case SendStep.CHAIN_SELECT:
+        return "Select Chain";
+      case SendStep.TOKEN_SELECT:
+        return "Select Token";
+      case SendStep.AMOUNT:
+        return "Enter Amount";
+      case SendStep.CONFIRM:
+        return "Confirm Transaction";
+      case SendStep.RESULT:
+        return "Transaction Result";
+      default:
+        return "Send";
+    }
+  };
+
   // Render content based on current step
   const renderStepContent = () => {
     switch (currentStep) {
-      case SendStep.CHAIN_SELECT:
-        return renderChainSelectScreen();
       case SendStep.RECIPIENT:
         return renderRecipientScreen();
+      case SendStep.CHAIN_SELECT:
+        return renderChainSelectScreen();
       case SendStep.TOKEN_SELECT:
         return renderTokenSelectScreen();
       case SendStep.AMOUNT:
@@ -1281,46 +1401,6 @@ export default function SendScreen() {
         return renderResultScreen();
       default:
         return null;
-    }
-  };
-
-  // Get button text based on current step
-  const getButtonText = () => {
-    switch (currentStep) {
-      case SendStep.CHAIN_SELECT:
-        return "Continue";
-      case SendStep.RECIPIENT:
-        return "Continue";
-      case SendStep.TOKEN_SELECT:
-        return "Continue";
-      case SendStep.AMOUNT:
-        return "Review";
-      case SendStep.CONFIRM:
-        return processingTransaction ? "Processing..." : "Send";
-      case SendStep.RESULT:
-        return "Done";
-      default:
-        return "Continue";
-    }
-  };
-
-  // Get step title for the header
-  const getStepTitle = () => {
-    switch (currentStep) {
-      case SendStep.CHAIN_SELECT:
-        return "Send Tokens";
-      case SendStep.RECIPIENT:
-        return "Recipient";
-      case SendStep.TOKEN_SELECT:
-        return "Select Token";
-      case SendStep.AMOUNT:
-        return "Amount";
-      case SendStep.CONFIRM:
-        return "Confirm";
-      case SendStep.RESULT:
-        return "Result";
-      default:
-        return "Send";
     }
   };
 
@@ -1386,13 +1466,20 @@ export default function SendScreen() {
                 styles.continueButton,
                 {
                   backgroundColor:
-                    estimatingFee || processingTransaction
+                    (currentStep === SendStep.RECIPIENT &&
+                      !detectedAddressType) ||
+                    estimatingFee ||
+                    processingTransaction
                       ? colors.disabledButton
                       : colors.primary,
                 },
               ]}
               onPress={handleNext}
-              disabled={estimatingFee || processingTransaction}>
+              disabled={
+                (currentStep === SendStep.RECIPIENT && !detectedAddressType) ||
+                estimatingFee ||
+                processingTransaction
+              }>
               {estimatingFee || processingTransaction ? (
                 <ActivityIndicator size="small" color="#FFFFFF" />
               ) : (
@@ -1469,6 +1556,16 @@ export default function SendScreen() {
             </View>
           </TouchableOpacity>
         </Modal>
+
+        {/* Show cross-chain warning if applicable */}
+        {showChainMismatchWarning && detectedChainId && selectedChain && (
+          <CrossChainWarning
+            detectedChain={detectedChainId}
+            selectedChain={selectedChain.id}
+            onDismiss={dismissChainMismatchWarning}
+            onSwitch={switchToDetectedChain}
+          />
+        )}
       </View>
     </KeyboardAvoidingView>
   );
@@ -1602,6 +1699,19 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     padding: 16,
+  },
+  detectedAddressBox: {
+    flexDirection: "row",
+    alignItems: "center",
+    padding: 10,
+    borderRadius: 8,
+    marginTop: 12,
+    marginBottom: 8,
+  },
+  detectedAddressText: {
+    fontSize: 14,
+    fontWeight: "600",
+    marginLeft: 8,
   },
 
   // Recipient Styles
