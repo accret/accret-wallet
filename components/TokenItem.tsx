@@ -117,8 +117,9 @@ export default function TokenItem({ token, onPress }: TokenItemProps) {
           numberOfLines={1}>
           {token.data.name}
         </Text>
+        {/* TODO: Display token name instead of chain name */}
         <Text style={[styles.tokenNetwork, { color: colors.secondaryText }]}>
-          {token.data.chain.name}
+          {token.data.symbol}
         </Text>
       </View>
 
@@ -127,7 +128,7 @@ export default function TokenItem({ token, onPress }: TokenItemProps) {
         <Text
           style={[styles.tokenAmount, { color: colors.text }]}
           numberOfLines={1}>
-          {formattedAmount} {token.data.symbol}
+          {formattedAmount}
         </Text>
         <View style={styles.priceRow}>
           <Text style={[styles.tokenValue, { color: colors.secondaryText }]}>
