@@ -19,6 +19,8 @@ import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { StatusBar } from "expo-status-bar";
 import ScreenHeader from "../ScreenHeader";
+import { fetchTokenPriceUsd } from "@/lib/api/portfolioUtils";
+import { Token as ApiToken, NativeType } from "@/types/tokens";
 import {
   SolanaIcon,
   EthereumIcon,
@@ -70,6 +72,10 @@ export default function SwapScreen() {
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [buttonDisabled, setButtonDisabled] = useState<boolean>(true);
   const [activeChain, setActiveChain] = useState<string>("solana");
+  const [tokenPrices, setTokenPrices] = useState<{
+    fromPrice: number;
+    toPrice: number;
+  }>({ fromPrice: 0, toPrice: 0 });
 
   // Initialize with default tokens
   useEffect(() => {
@@ -122,23 +128,180 @@ export default function SwapScreen() {
     setFilteredTokens(filtered);
   }, [searchQuery, allTokens]);
 
+  // Helper function to convert token to API token format
+  const convertToApiToken = (token: Token) => {
+    // Get chain ID in the format expected by the API
+    const getChainId = (chain: string): string => {
+      switch (chain) {
+        case "solana":
+          return "solana:101";
+        case "ethereum":
+          return "eip155:1";
+        case "polygon":
+          return "eip155:137";
+        case "base":
+          return "eip155:8453";
+        case "arbitrum":
+          return "eip155:42161";
+        default:
+          return "";
+      }
+    };
+
+    // Determine token type
+    let tokenType: string;
+    if (token.chain === "solana") {
+      tokenType = "SPL";
+    } else {
+      tokenType = "ERC20";
+    }
+
+    // Special case for native tokens
+    if (
+      (token.chain === "solana" && token.symbol === "SOL") ||
+      (token.chain === "ethereum" && token.symbol === "ETH") ||
+      (token.chain === "polygon" && token.symbol === "MATIC") ||
+      (token.chain === "base" && token.symbol === "ETH") ||
+      (token.chain === "arbitrum" && token.symbol === "ETH")
+    ) {
+      let nativeType: NativeType;
+      switch (token.chain) {
+        case "solana":
+          nativeType = "SolanaNative";
+          break;
+        case "ethereum":
+          nativeType = "EthereumNative";
+          break;
+        case "polygon":
+          nativeType = "PolygonNative";
+          break;
+        case "base":
+          nativeType = "BaseNative";
+          break;
+        case "arbitrum":
+          nativeType = "ArbitrumNative";
+          break;
+        default:
+          nativeType = "SolanaNative";
+      }
+
+      return {
+        type: nativeType,
+        data: {
+          chain: {
+            id: getChainId(token.chain),
+            name: token.chain,
+            symbol: token.symbol,
+            imageUrl: "",
+          },
+          walletAddress: "",
+          decimals: token.decimals || 9,
+          amount: "0",
+          logoUri: token.logoURI || "",
+          name: token.name,
+          symbol: token.symbol,
+          coingeckoId: null,
+          spamStatus: "VERIFIED",
+        },
+      } as ApiToken;
+    }
+
+    // For ERC20 tokens
+    if (tokenType === "ERC20") {
+      return {
+        type: "ERC20",
+        data: {
+          chain: {
+            id: getChainId(token.chain),
+            name: token.chain,
+            symbol: token.symbol,
+            imageUrl: "",
+          },
+          walletAddress: "",
+          contractAddress: token.contract || "",
+          decimals: token.decimals || 18,
+          amount: "0",
+          logoUri: token.logoURI || "",
+          name: token.name,
+          symbol: token.symbol,
+          coingeckoId: null,
+          spamStatus: "VERIFIED",
+        },
+      } as ApiToken;
+    }
+
+    // For SPL tokens
+    return {
+      type: "SPL",
+      data: {
+        chain: {
+          id: getChainId(token.chain),
+          name: token.chain,
+          symbol: token.symbol,
+          imageUrl: "",
+        },
+        walletAddress: "",
+        mintAddress: token.mint || "",
+        splTokenAccountPubkey: "",
+        programId: "",
+        decimals: token.decimals || 9,
+        amount: "0",
+        logoUri: token.logoURI || "",
+        name: token.name,
+        symbol: token.symbol,
+        coingeckoId: null,
+        spamStatus: "VERIFIED",
+      },
+    } as ApiToken;
+  };
+
   // Calculate estimated amount when amount or tokens change
   useEffect(() => {
     if (fromToken && toToken && amount && amount !== "0") {
       setIsLoading(true);
 
-      // Simulate API call with a timeout
-      setTimeout(() => {
-        // This would be replaced with actual swap rate API call
-        const mockRate =
-          fromToken.symbol === "SOL" && toToken.symbol === "USDC"
-            ? 175.3
-            : 0.0057;
+      // Use real price data from fetchTokenPriceUsd
+      const fetchPrices = async () => {
+        try {
+          // Convert tokens to API format
+          const fromTokenApi = convertToApiToken(fromToken);
+          const toTokenApi = convertToApiToken(toToken);
 
-        const estimated = (parseFloat(amount) * mockRate).toFixed(6);
-        setEstimatedAmount(estimated);
-        setIsLoading(false);
-      }, 500);
+          // Fetch prices using the API tokens
+          const [fromTokenPrice, toTokenPrice] = await Promise.all([
+            fetchTokenPriceUsd(fromTokenApi),
+            fetchTokenPriceUsd(toTokenApi),
+          ]);
+
+          // Calculate the exchange rate based on actual prices
+          let exchangeRate = 1;
+          if (fromTokenPrice.price > 0 && toTokenPrice.price > 0) {
+            exchangeRate = fromTokenPrice.price / toTokenPrice.price;
+          }
+
+          // Store token prices in state for use in UI
+          setTokenPrices({
+            fromPrice: fromTokenPrice.price,
+            toPrice: toTokenPrice.price,
+          });
+
+          const estimated = (parseFloat(amount) * exchangeRate).toFixed(6);
+          setEstimatedAmount(estimated);
+        } catch (error) {
+          console.error("Error fetching token prices:", error);
+          // Fallback to a simple calculation if price fetching fails
+          const fallbackRate =
+            fromToken.symbol === "SOL" && toToken.symbol === "USDC"
+              ? 175.3
+              : 0.0057;
+          const estimated = (parseFloat(amount) * fallbackRate).toFixed(6);
+          setEstimatedAmount(estimated);
+        } finally {
+          setIsLoading(false);
+        }
+      };
+
+      fetchPrices();
     } else {
       setEstimatedAmount("");
     }
@@ -165,6 +328,9 @@ export default function SwapScreen() {
   // Handle token selection
   const selectToken = (token: Token) => {
     Haptics.selectionAsync();
+
+    // Reset token prices when changing tokens
+    setTokenPrices({ fromPrice: 0, toPrice: 0 });
 
     if (isFromTokenSelection) {
       setFromToken(token);
@@ -198,6 +364,12 @@ export default function SwapScreen() {
       const temp = fromToken;
       setFromToken(toToken);
       setToToken(temp);
+
+      // Reset prices and estimated amount when swapping
+      setTokenPrices({
+        fromPrice: tokenPrices.toPrice,
+        toPrice: tokenPrices.fromPrice,
+      });
     }
   };
 
@@ -505,10 +677,11 @@ export default function SwapScreen() {
                       { color: colors.secondaryText },
                     ]}>
                     ≈ $
-                    {(
-                      parseFloat(estimatedAmount) *
-                      (toToken.symbol === "USDC" ? 1 : 175.3)
-                    ).toFixed(2)}
+                    {tokenPrices.toPrice > 0
+                      ? (
+                          parseFloat(estimatedAmount) * tokenPrices.toPrice
+                        ).toFixed(2)
+                      : "0.00"}
                   </Text>
                 </View>
               )}
@@ -528,7 +701,12 @@ export default function SwapScreen() {
                 />
                 <Text
                   style={[styles.minReceivedText, { color: colors.primary }]}>
-                  Minimum received: {estimatedAmount} {toToken.symbol}
+                  Minimum received:{" "}
+                  {(parseFloat(estimatedAmount) * 0.99).toFixed(6)}{" "}
+                  {toToken.symbol}
+                  {tokenPrices.toPrice > 0
+                    ? ` (≈$${(parseFloat(estimatedAmount) * tokenPrices.toPrice * 0.99).toFixed(2)})`
+                    : ""}
                 </Text>
               </View>
             )}
