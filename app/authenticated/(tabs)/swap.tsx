@@ -614,7 +614,10 @@ export default function SwapScreen() {
                       styles.tokenValueText,
                       { color: colors.secondaryText },
                     ]}>
-                    ≈ {fromToken.value || "$0.00"}
+                    ≈ $
+                    {tokenPrices.fromPrice > 0 && amount
+                      ? (parseFloat(amount) * tokenPrices.fromPrice).toFixed(2)
+                      : "0.00"}
                   </Text>
                 </View>
               )}
