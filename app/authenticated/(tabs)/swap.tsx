@@ -30,6 +30,8 @@ import {
   TokenPlaceholderIcon,
 } from "@/icons";
 import supportedTokensData from "@/lib/tx/mayan-bridge/constants/supportedToekns.json";
+import fetchTokens from "@/lib/api/tokens";
+import { formatTokenAmount } from "@/lib/api/portfolioUtils";
 
 interface Token {
   name: string;
@@ -79,31 +81,109 @@ export default function SwapScreen() {
 
   // Initialize with default tokens
   useEffect(() => {
-    // Prepare all tokens from supported chains
-    const tokens: Token[] = [];
-
-    Object.keys(supportedTokens).forEach((chain) => {
-      supportedTokens[chain].forEach((token) => {
-        tokens.push({
-          ...token,
-          chain,
+    const loadTokensWithBalances = async () => {
+      setIsLoading(true);
+      try {
+        // 1. Load all supported tokens
+        const supportedTokens: Token[] = [];
+        const supportedTokensDataAny = supportedTokensData as Record<
+          string,
+          any[]
+        >;
+        Object.keys(supportedTokensDataAny).forEach((chain) => {
+          supportedTokensDataAny[chain].forEach((token) => {
+            supportedTokens.push({
+              ...token,
+              chain,
+              balance: "0.00", // default, will be overwritten if user has balance
+              value: "",
+            });
+          });
         });
-      });
-    });
 
-    setAllTokens(tokens);
-    setFilteredTokens(tokens.filter((token) => token.chain === "solana")); // Filter to show Solana tokens by default
+        // 2. Fetch user tokens and balances
+        const { tokens: userTokens } = await fetchTokens();
+        // Create a map for quick lookup: key = chain + symbol (or contract/mint)
+        const userTokenMap = new Map();
+        userTokens.forEach((token: any) => {
+          const key =
+            token.data.chain.name.toLowerCase() +
+            "-" +
+            (token.data.contractAddress ||
+              token.data.mintAddress ||
+              token.data.symbol);
+          userTokenMap.set(key, {
+            amount: token.data.amount,
+            decimals: token.data.decimals,
+          });
+        });
 
-    // Set default from and to tokens (SOL -> USDC)
-    if (tokens.length > 0) {
-      const sol = tokens.find(
-        (t) => t.symbol === "SOL" && t.chain === "solana",
-      );
-      const usdc = tokens.find((t) => t.symbol === "USDC");
+        // 3. Merge balances into supported tokens
+        let mergedTokens = supportedTokens.map((token) => {
+          const key =
+            token.chain + "-" + (token.contract || token.mint || token.symbol);
+          const userToken = userTokenMap.get(key);
+          return {
+            ...token,
+            balance: userToken
+              ? formatTokenAmount(userToken.amount, userToken.decimals)
+              : "0.00",
+          };
+        });
 
-      if (sol) setFromToken(sol);
-      if (usdc) setToToken(usdc);
-    }
+        // Sort so tokens with balance > 0 are on top
+        mergedTokens.sort((a, b) => {
+          const aBal = parseFloat(a.balance);
+          const bBal = parseFloat(b.balance);
+          if (aBal > 0 && bBal === 0) return -1;
+          if (aBal === 0 && bBal > 0) return 1;
+          return 0;
+        });
+
+        // 4. Fetch USD prices for all tokens and update value field
+        const mergedTokensWithPrices = await Promise.all(
+          mergedTokens.map(async (token) => {
+            try {
+              // Convert to API token format for price fetch
+              const apiToken = convertToApiToken(token);
+              const { price } = await fetchTokenPriceUsd(apiToken);
+              let usdValue = 0;
+              if (price > 0 && token.balance && !isNaN(Number(token.balance))) {
+                usdValue = parseFloat(token.balance) * price;
+              }
+              return {
+                ...token,
+                value: price > 0 ? `$${usdValue.toFixed(2)}` : "$0.00",
+              };
+            } catch {
+              return {
+                ...token,
+                value: "$0.00",
+              };
+            }
+          }),
+        );
+
+        setAllTokens(mergedTokensWithPrices);
+        setFilteredTokens(
+          mergedTokensWithPrices.filter((token) => token.chain === "solana"),
+        );
+        // Set default from and to tokens (SOL -> USDC)
+        if (mergedTokensWithPrices.length > 0) {
+          const sol = mergedTokensWithPrices.find(
+            (t) => t.symbol === "SOL" && t.chain === "solana",
+          );
+          const usdc = mergedTokensWithPrices.find((t) => t.symbol === "USDC");
+          if (sol) setFromToken(sol);
+          if (usdc) setToToken(usdc);
+        }
+      } catch (e) {
+        // handle error
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    loadTokensWithBalances();
   }, []);
 
   // Update button disabled state
