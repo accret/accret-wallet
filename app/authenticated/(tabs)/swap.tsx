@@ -73,7 +73,7 @@ export default function SwapScreen() {
     useState<boolean>(true);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [buttonDisabled, setButtonDisabled] = useState<boolean>(true);
-  const [activeChain, setActiveChain] = useState<string>("solana");
+  const [activeChain, setActiveChain] = useState<string>("");
   const [tokenPrices, setTokenPrices] = useState<{
     fromPrice: number;
     toPrice: number;
@@ -165,9 +165,6 @@ export default function SwapScreen() {
         );
 
         setAllTokens(mergedTokensWithPrices);
-        setFilteredTokens(
-          mergedTokensWithPrices.filter((token) => token.chain === "solana"),
-        );
         // Set default from and to tokens (SOL -> USDC)
         if (mergedTokensWithPrices.length > 0) {
           const sol = mergedTokensWithPrices.find(
@@ -184,7 +181,7 @@ export default function SwapScreen() {
       }
     };
     loadTokensWithBalances();
-  }, []);
+  }, [activeChain]);
 
   // Update button disabled state
   useEffect(() => {
@@ -194,7 +191,9 @@ export default function SwapScreen() {
   // Filter tokens when search query changes
   useEffect(() => {
     if (!searchQuery) {
-      setFilteredTokens(allTokens);
+      setFilteredTokens(
+        allTokens.filter((token) => token.chain === activeChain),
+      );
       return;
     }
 
@@ -206,7 +205,7 @@ export default function SwapScreen() {
     );
 
     setFilteredTokens(filtered);
-  }, [searchQuery, allTokens]);
+  }, [searchQuery, allTokens, activeChain]);
 
   // Helper function to convert token to API token format
   const convertToApiToken = (token: Token) => {
