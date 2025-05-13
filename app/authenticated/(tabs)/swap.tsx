@@ -47,18 +47,8 @@ interface Token {
   value?: string;
 }
 
-interface SupportedTokens {
-  [key: string]: Token[];
-}
-
 export default function SwapScreen() {
   const { colors, theme } = useTheme();
-  const supportedTokens: SupportedTokens = Object.entries(
-    supportedTokensData,
-  ).reduce((acc, [chain, tokens]) => {
-    acc[chain] = tokens.map((token) => ({ ...token, chain }));
-    return acc;
-  }, {} as SupportedTokens);
 
   // State
   const [fromToken, setFromToken] = useState<Token | null>(null);
@@ -176,6 +166,7 @@ export default function SwapScreen() {
         }
       } catch (e) {
         // handle error
+        console.error(e);
       } finally {
         setIsLoading(false);
       }
