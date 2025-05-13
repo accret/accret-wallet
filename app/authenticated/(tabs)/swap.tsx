@@ -32,6 +32,7 @@ import {
 import supportedTokensData from "@/lib/tx/mayan-bridge/constants/supportedToekns.json";
 import fetchTokens from "@/lib/api/tokens";
 import { formatTokenAmount } from "@/lib/api/portfolioUtils";
+import { useRouter } from "expo-router";
 
 interface Token {
   name: string;
@@ -47,8 +48,41 @@ interface Token {
   value?: string;
 }
 
+type Quote = {
+  price: number;
+  slippage: number;
+  priceImpact: number;
+  fees: number;
+  provider: string;
+  market: string;
+  route: string;
+};
+
+const mockFetchQuote = async ({
+  fromToken,
+  toToken,
+  amount,
+}: {
+  fromToken: Token;
+  toToken: Token;
+  amount: string;
+}): Promise<Quote> => {
+  // Simulate network delay
+  await new Promise((res) => setTimeout(res, 500));
+  return {
+    price: 0.55068, // Example price
+    slippage: 0.3,
+    priceImpact: 0,
+    fees: 0.03,
+    provider: "Jupiter",
+    market: "Whirlpool + Raydium CLMM via Jupiter",
+    route: "Jupiter",
+  };
+};
+
 export default function SwapScreen() {
   const { colors, theme } = useTheme();
+  const router = useRouter();
 
   // State
   const [fromToken, setFromToken] = useState<Token | null>(null);
@@ -68,6 +102,9 @@ export default function SwapScreen() {
     fromPrice: number;
     toPrice: number;
   }>({ fromPrice: 0, toPrice: 0 });
+  const [quote, setQuote] = useState<Quote | null>(null);
+  const [quoteLoading, setQuoteLoading] = useState(false);
+  const [didSetDefaults, setDidSetDefaults] = useState(false);
 
   // Initialize with default tokens
   useEffect(() => {
@@ -155,14 +192,15 @@ export default function SwapScreen() {
         );
 
         setAllTokens(mergedTokensWithPrices);
-        // Set default from and to tokens (SOL -> USDC)
-        if (mergedTokensWithPrices.length > 0) {
+        // Set default from and to tokens (SOL -> USDC) only once
+        if (!didSetDefaults && mergedTokensWithPrices.length > 0) {
           const sol = mergedTokensWithPrices.find(
             (t) => t.symbol === "SOL" && t.chain === "solana",
           );
           const usdc = mergedTokensWithPrices.find((t) => t.symbol === "USDC");
           if (sol) setFromToken(sol);
           if (usdc) setToToken(usdc);
+          setDidSetDefaults(true);
         }
       } catch (e) {
         // handle error
@@ -389,6 +427,21 @@ export default function SwapScreen() {
     }
   }, [fromToken, toToken, amount]);
 
+  // Fetch quote when amount, fromToken, or toToken changes
+  useEffect(() => {
+    const fetchQuote = async () => {
+      if (fromToken && toToken && amount && amount !== "0") {
+        setQuoteLoading(true);
+        const q = await mockFetchQuote({ fromToken, toToken, amount });
+        setQuote(q);
+        setQuoteLoading(false);
+      } else {
+        setQuote(null);
+      }
+    };
+    fetchQuote();
+  }, [fromToken, toToken, amount]);
+
   // Handle opening token selection modal
   const openTokenModal = (isFrom: boolean) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -458,8 +511,17 @@ export default function SwapScreen() {
   // Handle swap button press
   const handleSwap = () => {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    // Implement swap logic
-    alert("Swap functionality to be implemented");
+    // Navigate to confirmation page with swap details (placeholder)
+    router.push({
+      pathname: "/authenticated/swap-confirmation" as any,
+      params: {
+        fromToken: JSON.stringify(fromToken),
+        toToken: JSON.stringify(toToken),
+        amount,
+        estimatedAmount,
+        quote: JSON.stringify(quote),
+      },
+    });
   };
 
   // Filter tokens by chain
@@ -809,6 +871,65 @@ export default function SwapScreen() {
                     ? ` (≈$${(parseFloat(estimatedAmount) * tokenPrices.toPrice * 0.99).toFixed(2)})`
                     : ""}
                 </Text>
+              </View>
+            )}
+
+            {quote && (
+              <View
+                style={[
+                  styles.quoteCard,
+                  {
+                    backgroundColor: theme === "dark" ? colors.card : "#181A20",
+                  },
+                ]}>
+                <View style={styles.quoteRow}>
+                  <Text
+                    style={[
+                      styles.quoteLabel,
+                      { color: colors.secondaryText },
+                    ]}>
+                    Pricing
+                  </Text>
+                  <Text style={[styles.quoteValue, { color: colors.text }]}>
+                    1 {fromToken?.symbol} ≈ {quote.price} {toToken?.symbol}
+                  </Text>
+                </View>
+                <View style={styles.quoteRow}>
+                  <Text
+                    style={[
+                      styles.quoteLabel,
+                      { color: colors.secondaryText },
+                    ]}>
+                    Slippage
+                  </Text>
+                  <Text style={[styles.quoteValue, { color: colors.text }]}>
+                    {quote.slippage}%
+                  </Text>
+                </View>
+                <View style={styles.quoteRow}>
+                  <Text
+                    style={[
+                      styles.quoteLabel,
+                      { color: colors.secondaryText },
+                    ]}>
+                    Price Impact
+                  </Text>
+                  <Text style={[styles.quoteValue, { color: colors.text }]}>
+                    {quote.priceImpact}%
+                  </Text>
+                </View>
+                <View style={styles.quoteRow}>
+                  <Text
+                    style={[
+                      styles.quoteLabel,
+                      { color: colors.secondaryText },
+                    ]}>
+                    Fees
+                  </Text>
+                  <Text style={[styles.quoteValue, { color: colors.text }]}>
+                    ${quote.fees.toFixed(2)}
+                  </Text>
+                </View>
               </View>
             )}
           </View>
@@ -1286,5 +1407,23 @@ const styles = StyleSheet.create({
   selectedTokenChainText: {
     fontSize: 12,
     marginLeft: 4,
+  },
+  quoteCard: {
+    borderRadius: 16,
+    padding: 16,
+    marginVertical: 12,
+  },
+  quoteRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 8,
+  },
+  quoteLabel: {
+    fontSize: 15,
+  },
+  quoteValue: {
+    fontSize: 15,
+    fontWeight: "600",
   },
 });
