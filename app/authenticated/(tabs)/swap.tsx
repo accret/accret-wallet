@@ -176,7 +176,19 @@ export default function SwapScreen() {
 
   // Update button disabled state
   useEffect(() => {
-    setButtonDisabled(!fromToken || !toToken || !amount || amount === "0");
+    let insufficientBalance = false;
+    if (fromToken && amount) {
+      const bal = parseFloat(fromToken.balance || "0");
+      const amt = parseFloat(amount);
+      insufficientBalance = amt > bal;
+    }
+    setButtonDisabled(
+      !fromToken ||
+        !toToken ||
+        !amount ||
+        amount === "0" ||
+        insufficientBalance,
+    );
   }, [fromToken, toToken, amount]);
 
   // Filter tokens when search query changes
@@ -668,11 +680,27 @@ export default function SwapScreen() {
               <View style={styles.tokenInputRow}>
                 {renderSelectedToken(fromToken, true)}
                 <TextInput
-                  style={[styles.amountInput, { color: colors.text }]}
+                  style={[
+                    styles.amountInput,
+                    { color: colors.text },
+                    amount &&
+                    fromToken &&
+                    parseFloat(amount) > parseFloat(fromToken.balance || "0")
+                      ? { color: "#CB3A2E" }
+                      : null,
+                  ]}
                   placeholder="0.0"
                   placeholderTextColor={colors.tertiaryText}
                   value={amount}
-                  onChangeText={setAmount}
+                  onChangeText={(text) => {
+                    // Allow only one decimal point
+                    let filtered = text.replace(/[^0-9.]/g, "");
+                    const parts = filtered.split(".");
+                    if (parts.length > 2) {
+                      filtered = parts[0] + "." + parts.slice(1).join("");
+                    }
+                    setAmount(filtered);
+                  }}
                   keyboardType="decimal-pad"
                 />
               </View>
@@ -792,9 +820,14 @@ export default function SwapScreen() {
             style={[
               styles.swapButton,
               {
-                backgroundColor: buttonDisabled
-                  ? colors.disabledButton
-                  : colors.primary,
+                backgroundColor:
+                  fromToken &&
+                  amount &&
+                  parseFloat(amount) > parseFloat(fromToken.balance || "0")
+                    ? "#CB3A2E"
+                    : buttonDisabled
+                      ? colors.disabledButton
+                      : colors.primary,
               },
             ]}
             onPress={handleSwap}
@@ -804,7 +837,11 @@ export default function SwapScreen() {
                 ? "Select Tokens"
                 : !amount
                   ? "Enter Amount"
-                  : "Swap"}
+                  : fromToken &&
+                      amount &&
+                      parseFloat(amount) > parseFloat(fromToken.balance || "0")
+                    ? "Not Enough Funds"
+                    : "Swap"}
             </Text>
           </TouchableOpacity>
         </View>
