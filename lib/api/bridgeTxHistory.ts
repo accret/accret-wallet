@@ -75,12 +75,33 @@ export async function getBridgeTxHistory({
   const evmData = evmResponse.data.data;
   const mergedData = [...svmData, ...evmData];
 
-  const filteredData = mergedData.filter((item: Datum) => {
+  // Create a Map to store unique transactions by orderId
+  const uniqueTransactions = new Map<string, Datum>();
+
+  // Add transactions to the Map, keeping only the most recent one for each orderId
+  mergedData.forEach((item: Datum) => {
     if (item.orderId) {
-      return item.orderId !== null;
+      const existingItem = uniqueTransactions.get(item.orderId);
+      if (
+        !existingItem ||
+        new Date(item.initiatedAt) > new Date(existingItem.initiatedAt)
+      ) {
+        uniqueTransactions.set(item.orderId, item);
+      }
+    } else {
+      // For transactions without orderId, use sourceTxHash as identifier
+      const existingItem = uniqueTransactions.get(item.sourceTxHash);
+      if (
+        !existingItem ||
+        new Date(item.initiatedAt) > new Date(existingItem.initiatedAt)
+      ) {
+        uniqueTransactions.set(item.sourceTxHash, item);
+      }
     }
-    return true;
   });
+
+  // Convert Map values back to array
+  const filteredData = Array.from(uniqueTransactions.values());
 
   const sortedData = filteredData.sort((a: Datum, b: Datum) => {
     const dateA = new Date(a.initiatedAt);
@@ -99,4 +120,114 @@ export async function getBridgeTxHistory({
     },
   };
   return response;
+}
+
+export type TransactionStatus =
+  | "success"
+  | "pending"
+  | "failed"
+  | "reverted"
+  | "unknown";
+
+export interface StatusInfo {
+  color: string;
+  text: string;
+  icon: string;
+}
+
+/**
+ * Gets the human-readable chain name
+ */
+export function getChainName(chainId: string): string {
+  const chainMap: Record<string, string> = {
+    solana: "Solana",
+    ethereum: "Ethereum",
+    polygon: "Polygon",
+    base: "Base",
+    arbitrum: "Arbitrum",
+  };
+  return chainMap[chainId] || chainId;
+}
+
+/**
+ * Get normalized status from various status fields
+ */
+export function getNormalizedStatus(transaction: Datum): TransactionStatus {
+  const status = transaction.status?.toLowerCase();
+  const clientStatus = transaction.clientStatus?.toUpperCase();
+
+  if (status === "success" || clientStatus === "CONFIRMED") {
+    return "success";
+  } else if (status === "pending" || clientStatus === "PENDING") {
+    return "pending";
+  } else if (status === "failed" || clientStatus === "FAILED") {
+    return "failed";
+  } else if (status === "reverted" || clientStatus === "REVERTED") {
+    return "reverted";
+  }
+
+  return "unknown";
+}
+
+/**
+ * Format date for display
+ */
+export function formatTransactionDate(dateString: string | Date): string {
+  const date = new Date(dateString);
+  return date.toLocaleString("en-US", {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "numeric",
+    hour12: true,
+  });
+}
+
+/**
+ * Format amount to be more readable
+ */
+export function formatTokenAmount(amount: string): string {
+  const num = parseFloat(amount);
+  if (isNaN(num)) return "0";
+
+  // For very small numbers, use scientific notation
+  if (num < 0.0001) {
+    return num.toExponential(4);
+  }
+
+  // For regular numbers, use fixed point with an appropriate number of decimals
+  if (num >= 1000) {
+    return num.toFixed(2);
+  } else if (num >= 1) {
+    return num.toFixed(4);
+  } else {
+    return num.toFixed(6);
+  }
+}
+
+/**
+ * Calculate estimated USD value of transaction
+ */
+export function calculateUsdValue(amount: string, price: number): string {
+  const numAmount = parseFloat(amount);
+  if (isNaN(numAmount) || !price) return "$0.00";
+
+  const value = numAmount * price;
+
+  if (value >= 1000) {
+    return `$${value.toFixed(2)}`;
+  } else if (value >= 1) {
+    return `$${value.toFixed(2)}`;
+  } else if (value >= 0.01) {
+    return `$${value.toFixed(4)}`;
+  } else {
+    return `$${value.toExponential(2)}`;
+  }
+}
+
+/**
+ * Determine if transaction is cross-chain
+ */
+export function isCrossChainTransaction(transaction: Datum): boolean {
+  return transaction.sourceChain !== transaction.destChain;
 }
