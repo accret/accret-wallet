@@ -19,11 +19,7 @@ import * as Haptics from "expo-haptics";
 import { useTheme } from "@/theme";
 import { StatusBar } from "expo-status-bar";
 import QRCode from "react-native-qrcode-svg";
-import {
-  useCurrentSVMAccount,
-  useCurrentEVMAccount,
-  useCurrentAccount,
-} from "@/lib/accountStorage";
+import { getCurrentAccount } from "@/lib/accountStorage";
 
 const SCREEN_WIDTH = Dimensions.get("window").width;
 
@@ -47,12 +43,15 @@ export default function ReceiveScreen() {
       try {
         setLoading(true);
 
-        // eslint-disable-next-line react-hooks/rules-of-hooks
-        const svm = await useCurrentSVMAccount();
-        // eslint-disable-next-line react-hooks/rules-of-hooks
-        const evm = await useCurrentEVMAccount();
-        // eslint-disable-next-line react-hooks/rules-of-hooks
-        const acc = await useCurrentAccount();
+        const acc = await getCurrentAccount();
+
+        if (!acc) {
+          Alert.alert("Error", "No wallet account found");
+          return;
+        }
+
+        const svm = acc.svm;
+        const evm = acc.evm;
 
         setSvmAccount(svm);
         setEvmAccount(evm);

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect } from "react";
 import {
   StyleSheet,
   Text,
@@ -32,7 +32,7 @@ import {
   type QuoteResult,
 } from "@/lib/tx/mayan-bridge";
 import { ChainName } from "@mayanfinance/swap-sdk";
-import { useCurrentAccount } from "@/lib/accountStorage";
+import { getCurrentAccount } from "@/lib/accountStorage";
 
 // Chain definitions
 const CHAINS = [
@@ -138,8 +138,7 @@ export default function SwapScreen() {
   // Load user account
   useEffect(() => {
     const loadAccount = async () => {
-      // eslint-disable-next-line react-hooks/rules-of-hooks
-      const currentAccount = await useCurrentAccount();
+      const currentAccount = await getCurrentAccount();
       setAccount(currentAccount);
     };
     loadAccount();
