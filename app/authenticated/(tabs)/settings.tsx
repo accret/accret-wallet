@@ -9,7 +9,7 @@ import {
 import { useTheme } from "@/theme";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import { useCurrentAccount } from "@/lib/accountStorage";
+import { getCurrentAccount } from "@/lib/accountStorage";
 import type { AccountStorage } from "@/types/accountStorage";
 import ScreenHeader from "../ScreenHeader";
 
@@ -22,8 +22,7 @@ export default function SettingsScreen() {
 
   useEffect(() => {
     const loadAccount = async () => {
-      // eslint-disable-next-line react-hooks/rules-of-hooks
-      const account = await useCurrentAccount();
+      const account = await getCurrentAccount();
       setCurrentAccount(account);
     };
     loadAccount();

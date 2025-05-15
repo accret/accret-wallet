@@ -1,26 +1,21 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import {
   StyleSheet,
   Text,
   View,
   TouchableOpacity,
+  TextInput,
+  ActivityIndicator,
   Modal,
   FlatList,
-  TextInput,
   Image,
   ScrollView,
-  SafeAreaView,
-  KeyboardAvoidingView,
-  Platform,
-  ActivityIndicator,
+  Alert,
 } from "react-native";
 import { useTheme } from "@/theme";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
-import { StatusBar } from "expo-status-bar";
 import ScreenHeader from "../ScreenHeader";
-import { fetchTokenPriceUsd } from "@/lib/api/portfolioUtils";
-import { Token as ApiToken, NativeType } from "@/types/tokens";
 import {
   SolanaIcon,
   EthereumIcon,
@@ -29,993 +24,1009 @@ import {
   ArbitrumIcon,
   TokenPlaceholderIcon,
 } from "@/icons";
-import supportedTokensData from "@/lib/tx/mayan-bridge/constants/supportedToekns.json";
-import fetchTokens from "@/lib/api/tokens";
-import { formatTokenAmount } from "@/lib/api/portfolioUtils";
+import {
+  fetchSupportedTokens,
+  getQuote,
+  executeBridgeTransaction,
+  type BridgeParams,
+  type QuoteResult,
+} from "@/lib/tx/mayan-bridge";
+import { ChainName } from "@mayanfinance/swap-sdk";
+import { getCurrentAccount } from "@/lib/accountStorage";
+import { getExplorerUrl } from "@/lib/tx/explorerUrl";
+import * as Clipboard from "expo-clipboard";
+import { Linking } from "react-native";
 import { useRouter } from "expo-router";
 
+// Chain definitions
+const CHAINS = [
+  {
+    id: "solana:101",
+    name: "Solana",
+    symbol: "Solana",
+    icon: SolanaIcon,
+    mayanName: "solana" as ChainName,
+  },
+  {
+    id: "eip155:1",
+    name: "Ethereum",
+    symbol: "Ethereum",
+    icon: EthereumIcon,
+    mayanName: "ethereum" as ChainName,
+  },
+  {
+    id: "eip155:137",
+    name: "Polygon",
+    symbol: "Polygon",
+    icon: PolygonIcon,
+    mayanName: "polygon" as ChainName,
+  },
+  {
+    id: "eip155:8453",
+    name: "Base",
+    symbol: "Base",
+    icon: BaseIcon,
+    mayanName: "base" as ChainName,
+  },
+  {
+    id: "eip155:42161",
+    name: "Arbitrum",
+    symbol: "Arbitrum",
+    icon: ArbitrumIcon,
+    mayanName: "arbitrum" as ChainName,
+  },
+];
+
+// Token interface
 interface Token {
   name: string;
   symbol: string;
-  mint: string;
-  contract: string;
+  mint?: string;
+  contract?: string;
   chainId: number;
-  wChainId: number;
   decimals: number;
   logoURI: string;
   chain: string;
   balance?: string;
   value?: string;
+  wrappedAddress?: string;
 }
-
-type Quote = {
-  price: number;
-  slippage: number;
-  priceImpact: number;
-  fees: number;
-  provider: string;
-  market: string;
-  route: string;
-};
-
-const mockFetchQuote = async ({
-  fromToken,
-  toToken,
-  amount,
-}: {
-  fromToken: Token;
-  toToken: Token;
-  amount: string;
-}): Promise<Quote> => {
-  // Simulate network delay
-  await new Promise((res) => setTimeout(res, 500));
-  return {
-    price: 0.55068, // Example price
-    slippage: 0.3,
-    priceImpact: 0,
-    fees: 0.03,
-    provider: "Jupiter",
-    market: "Whirlpool + Raydium CLMM via Jupiter",
-    route: "Jupiter",
-  };
-};
 
 export default function SwapScreen() {
   const { colors, theme } = useTheme();
   const router = useRouter();
 
-  // State
+  // State for chain and token selection
+  const [fromChain, setFromChain] = useState(CHAINS[0]);
+  const [toChain, setToChain] = useState(CHAINS[1]);
   const [fromToken, setFromToken] = useState<Token | null>(null);
   const [toToken, setToToken] = useState<Token | null>(null);
-  const [amount, setAmount] = useState<string>("");
-  const [estimatedAmount, setEstimatedAmount] = useState<string>("");
-  const [allTokens, setAllTokens] = useState<Token[]>([]);
-  const [modalVisible, setModalVisible] = useState<boolean>(false);
-  const [searchQuery, setSearchQuery] = useState<string>("");
-  const [filteredTokens, setFilteredTokens] = useState<Token[]>([]);
-  const [isFromTokenSelection, setIsFromTokenSelection] =
-    useState<boolean>(true);
-  const [isLoading, setIsLoading] = useState<boolean>(false);
-  const [buttonDisabled, setButtonDisabled] = useState<boolean>(true);
-  const [activeChain, setActiveChain] = useState<string>("");
-  const [tokenPrices, setTokenPrices] = useState<{
-    fromPrice: number;
-    toPrice: number;
-  }>({ fromPrice: 0, toPrice: 0 });
-  const [quote, setQuote] = useState<Quote | null>(null);
-  const [quoteLoading, setQuoteLoading] = useState(false);
-  const [didSetDefaults, setDidSetDefaults] = useState(false);
 
-  // Initialize with default tokens
+  // State for token amounts
+  const [amount, setAmount] = useState("");
+
+  // State for modals
+  const [showFromChainModal, setShowFromChainModal] = useState(false);
+  const [showToChainModal, setShowToChainModal] = useState(false);
+  const [showFromTokenModal, setShowFromTokenModal] = useState(false);
+  const [showToTokenModal, setShowToTokenModal] = useState(false);
+
+  // State for loading and data
+  const [supportedTokens, setSupportedTokens] = useState<
+    Record<string, Token[]>
+  >({});
+  const [isLoadingTokens, setIsLoadingTokens] = useState(false);
+  const [isSwapping, setIsSwapping] = useState(false);
+  const [quoteResult, setQuoteResult] = useState<QuoteResult | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  // Search state - separate states for from and to tokens
+  const [fromSearchQuery, setFromSearchQuery] = useState("");
+  const [toSearchQuery, setToSearchQuery] = useState("");
+  const [filteredFromTokens, setFilteredFromTokens] = useState<Token[]>([]);
+  const [filteredToTokens, setFilteredToTokens] = useState<Token[]>([]);
+
+  // Get account for addresses
+  const [account, setAccount] = useState<any>(null);
+
+  // Debounced route fetching
+  const [debouncedAmount, setDebouncedAmount] = useState(amount);
+
+  // Add loading state for quote
+  const [isLoadingQuote, setIsLoadingQuote] = useState(false);
+
+  const [showConfirmationModal, setShowConfirmationModal] = useState(false);
+  const [transactionHash, setTransactionHash] = useState<string | null>(null);
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
+
   useEffect(() => {
-    const loadTokensWithBalances = async () => {
-      setIsLoading(true);
-      try {
-        // 1. Load all supported tokens
-        const supportedTokens: Token[] = [];
-        const supportedTokensDataAny = supportedTokensData as Record<
-          string,
-          any[]
-        >;
-        Object.keys(supportedTokensDataAny).forEach((chain) => {
-          supportedTokensDataAny[chain].forEach((token) => {
-            supportedTokens.push({
-              ...token,
-              chain,
-              balance: "0.00", // default, will be overwritten if user has balance
-              value: "",
-            });
-          });
-        });
+    const timer = setTimeout(() => {
+      setDebouncedAmount(amount);
+    }, 800);
 
-        // 2. Fetch user tokens and balances
-        const { tokens: userTokens } = await fetchTokens();
-        // Create a map for quick lookup: key = chain + symbol (or contract/mint)
-        const userTokenMap = new Map();
-        userTokens.forEach((token: any) => {
-          const key =
-            token.data.chain.name.toLowerCase() +
-            "-" +
-            (token.data.contractAddress ||
-              token.data.mintAddress ||
-              token.data.symbol);
-          userTokenMap.set(key, {
-            amount: token.data.amount,
-            decimals: token.data.decimals,
-          });
-        });
+    return () => clearTimeout(timer);
+  }, [amount]);
 
-        // 3. Merge balances into supported tokens
-        let mergedTokens = supportedTokens.map((token) => {
-          const key =
-            token.chain + "-" + (token.contract || token.mint || token.symbol);
-          const userToken = userTokenMap.get(key);
-          return {
-            ...token,
-            balance: userToken
-              ? formatTokenAmount(userToken.amount, userToken.decimals)
-              : "0.00",
-          };
-        });
-
-        // Sort so tokens with balance > 0 are on top
-        mergedTokens.sort((a, b) => {
-          const aBal = parseFloat(a.balance);
-          const bBal = parseFloat(b.balance);
-          if (aBal > 0 && bBal === 0) return -1;
-          if (aBal === 0 && bBal > 0) return 1;
-          return 0;
-        });
-
-        // 4. Fetch USD prices for all tokens and update value field
-        const mergedTokensWithPrices = await Promise.all(
-          mergedTokens.map(async (token) => {
-            try {
-              // Convert to API token format for price fetch
-              const apiToken = convertToApiToken(token);
-              const { price } = await fetchTokenPriceUsd(apiToken);
-              let usdValue = 0;
-              if (price > 0 && token.balance && !isNaN(Number(token.balance))) {
-                usdValue = parseFloat(token.balance) * price;
-              }
-              return {
-                ...token,
-                value: price > 0 ? `$${usdValue.toFixed(2)}` : "$0.00",
-              };
-            } catch {
-              return {
-                ...token,
-                value: "$0.00",
-              };
-            }
-          }),
-        );
-
-        setAllTokens(mergedTokensWithPrices);
-        // Set default from and to tokens (SOL -> USDC) only once
-        if (!didSetDefaults && mergedTokensWithPrices.length > 0) {
-          const sol = mergedTokensWithPrices.find(
-            (t) => t.symbol === "SOL" && t.chain === "solana",
-          );
-          const usdc = mergedTokensWithPrices.find((t) => t.symbol === "USDC");
-          if (sol) setFromToken(sol);
-          if (usdc) setToToken(usdc);
-          setDidSetDefaults(true);
-        }
-      } catch (e) {
-        // handle error
-        console.error(e);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-    loadTokensWithBalances();
-  }, [activeChain]);
-
-  // Update button disabled state
   useEffect(() => {
-    let insufficientBalance = false;
-    if (fromToken && amount) {
-      const bal = parseFloat(fromToken.balance || "0");
-      const amt = parseFloat(amount);
-      insufficientBalance = amt > bal;
+    if (parseFloat(debouncedAmount) > 0) {
+      fetchRoutes();
+    } else {
+      setQuoteResult(null);
     }
-    setButtonDisabled(
-      !fromToken ||
-        !toToken ||
-        !amount ||
-        amount === "0" ||
-        insufficientBalance,
-    );
-  }, [fromToken, toToken, amount]);
+  }, [debouncedAmount]);
 
-  // Filter tokens when search query changes
+  // Load user account
   useEffect(() => {
-    if (!searchQuery) {
-      setFilteredTokens(
-        allTokens.filter((token) => token.chain === activeChain),
-      );
+    const loadAccount = async () => {
+      const currentAccount = await getCurrentAccount();
+      setAccount(currentAccount);
+    };
+    loadAccount();
+  }, []);
+
+  // Load supported tokens when chains change
+  useEffect(() => {
+    if (fromChain) {
+      loadSupportedTokens(fromChain.id, "from");
+    }
+  }, [fromChain]);
+
+  useEffect(() => {
+    if (toChain) {
+      loadSupportedTokens(toChain.id, "to");
+    }
+  }, [toChain]);
+
+  // Filter "from" tokens based on search query
+  useEffect(() => {
+    if (!supportedTokens[fromChain.mayanName]) {
+      setFilteredFromTokens([]);
       return;
     }
 
-    const query = searchQuery.toLowerCase();
-    const filtered = allTokens.filter(
+    if (fromSearchQuery.trim() === "") {
+      setFilteredFromTokens(supportedTokens[fromChain.mayanName] || []);
+      return;
+    }
+
+    const query = fromSearchQuery.toLowerCase();
+    const filtered = (supportedTokens[fromChain.mayanName] || []).filter(
       (token) =>
         token.name.toLowerCase().includes(query) ||
-        token.symbol.toLowerCase().includes(query),
+        token.symbol.toLowerCase().includes(query) ||
+        (token.contract?.toLowerCase() || "").includes(query) ||
+        (token.mint?.toLowerCase() || "").includes(query),
     );
+    setFilteredFromTokens(filtered);
+  }, [fromSearchQuery, supportedTokens, fromChain]);
 
-    setFilteredTokens(filtered);
-  }, [searchQuery, allTokens, activeChain]);
-
-  // Helper function to convert token to API token format
-  const convertToApiToken = (token: Token) => {
-    // Get chain ID in the format expected by the API
-    const getChainId = (chain: string): string => {
-      switch (chain) {
-        case "solana":
-          return "solana:101";
-        case "ethereum":
-          return "eip155:1";
-        case "polygon":
-          return "eip155:137";
-        case "base":
-          return "eip155:8453";
-        case "arbitrum":
-          return "eip155:42161";
-        default:
-          return "";
-      }
-    };
-
-    // Determine token type
-    let tokenType: string;
-    if (token.chain === "solana") {
-      tokenType = "SPL";
-    } else {
-      tokenType = "ERC20";
+  // Filter "to" tokens based on search query
+  useEffect(() => {
+    if (!supportedTokens[toChain.mayanName]) {
+      setFilteredToTokens([]);
+      return;
     }
 
-    // Special case for native tokens
-    if (
-      (token.chain === "solana" && token.symbol === "SOL") ||
-      (token.chain === "ethereum" && token.symbol === "ETH") ||
-      (token.chain === "polygon" && token.symbol === "MATIC") ||
-      (token.chain === "base" && token.symbol === "ETH") ||
-      (token.chain === "arbitrum" && token.symbol === "ETH")
-    ) {
-      let nativeType: NativeType;
-      switch (token.chain) {
-        case "solana":
-          nativeType = "SolanaNative";
-          break;
-        case "ethereum":
-          nativeType = "EthereumNative";
-          break;
-        case "polygon":
-          nativeType = "PolygonNative";
-          break;
-        case "base":
-          nativeType = "BaseNative";
-          break;
-        case "arbitrum":
-          nativeType = "ArbitrumNative";
-          break;
-        default:
-          nativeType = "SolanaNative";
+    if (toSearchQuery.trim() === "") {
+      setFilteredToTokens(supportedTokens[toChain.mayanName] || []);
+      return;
+    }
+
+    const query = toSearchQuery.toLowerCase();
+    const filtered = (supportedTokens[toChain.mayanName] || []).filter(
+      (token) =>
+        token.name.toLowerCase().includes(query) ||
+        token.symbol.toLowerCase().includes(query) ||
+        (token.contract?.toLowerCase() || "").includes(query) ||
+        (token.mint?.toLowerCase() || "").includes(query),
+    );
+    setFilteredToTokens(filtered);
+  }, [toSearchQuery, supportedTokens, toChain]);
+
+  // Load supported tokens for a chain
+  const loadSupportedTokens = async (
+    chainId: string,
+    chainType: "from" | "to",
+  ) => {
+    try {
+      setIsLoadingTokens(true);
+
+      // Determine which chain to use based on the chainType
+      const chain = chainType === "from" ? fromChain : toChain;
+
+      // Fetch tokens if they haven't been loaded for this chain yet
+      if (!supportedTokens[chain.mayanName]) {
+        const tokens = await fetchSupportedTokens(chainId as any);
+        setSupportedTokens((prev) => ({ ...prev, ...tokens }));
       }
 
-      return {
-        type: nativeType,
-        data: {
-          chain: {
-            id: getChainId(token.chain),
-            name: token.chain,
-            symbol: token.symbol,
-            imageUrl: "",
-          },
-          walletAddress: "",
-          decimals: token.decimals || 9,
-          amount: "0",
-          logoUri: token.logoURI || "",
-          name: token.name,
-          symbol: token.symbol,
-          coingeckoId: null,
-          spamStatus: "VERIFIED",
-        },
-      } as ApiToken;
+      // Set default token (first in the list) if none selected yet
+      if (chainType === "from") {
+        if (
+          !fromToken &&
+          supportedTokens[chain.mayanName] &&
+          supportedTokens[chain.mayanName].length > 0
+        ) {
+          setFromToken(supportedTokens[chain.mayanName][0]);
+        }
+        setFilteredFromTokens(supportedTokens[chain.mayanName] || []);
+      } else {
+        if (
+          !toToken &&
+          supportedTokens[chain.mayanName] &&
+          supportedTokens[chain.mayanName].length > 0
+        ) {
+          setToToken(supportedTokens[chain.mayanName][0]);
+        }
+        setFilteredToTokens(supportedTokens[chain.mayanName] || []);
+      }
+    } catch (error) {
+      console.error(
+        `Error loading supported tokens for ${chainType} chain:`,
+        error,
+      );
+      Alert.alert("Error", "Failed to load supported tokens");
+    } finally {
+      setIsLoadingTokens(false);
     }
-
-    // For ERC20 tokens
-    if (tokenType === "ERC20") {
-      return {
-        type: "ERC20",
-        data: {
-          chain: {
-            id: getChainId(token.chain),
-            name: token.chain,
-            symbol: token.symbol,
-            imageUrl: "",
-          },
-          walletAddress: "",
-          contractAddress: token.contract || "",
-          decimals: token.decimals || 18,
-          amount: "0",
-          logoUri: token.logoURI || "",
-          name: token.name,
-          symbol: token.symbol,
-          coingeckoId: null,
-          spamStatus: "VERIFIED",
-        },
-      } as ApiToken;
-    }
-
-    // For SPL tokens
-    return {
-      type: "SPL",
-      data: {
-        chain: {
-          id: getChainId(token.chain),
-          name: token.chain,
-          symbol: token.symbol,
-          imageUrl: "",
-        },
-        walletAddress: "",
-        mintAddress: token.mint || "",
-        splTokenAccountPubkey: "",
-        programId: "",
-        decimals: token.decimals || 9,
-        amount: "0",
-        logoUri: token.logoURI || "",
-        name: token.name,
-        symbol: token.symbol,
-        coingeckoId: null,
-        spamStatus: "VERIFIED",
-      },
-    } as ApiToken;
   };
 
-  // Calculate estimated amount when amount or tokens change
-  useEffect(() => {
-    if (fromToken && toToken && amount && amount !== "0") {
-      setIsLoading(true);
+  // Fetch available routes
+  const fetchRoutes = async () => {
+    if (!fromToken || !toToken || !amount || parseFloat(amount) <= 0) {
+      return;
+    }
 
-      // Use real price data from fetchTokenPriceUsd
-      const fetchPrices = async () => {
-        try {
-          // Convert tokens to API format
-          const fromTokenApi = convertToApiToken(fromToken);
-          const toTokenApi = convertToApiToken(toToken);
+    try {
+      setError(null); // Clear any previous errors
+      setIsLoadingQuote(true); // Set loading state
+      // Get the destination address based on selected chain type
+      let destAddr = "";
+      if (toChain.id.startsWith("solana")) {
+        destAddr = account?.svm?.publicKey.toString() || "";
+      } else {
+        destAddr = account?.evm?.publicKey || "";
+      }
 
-          // Fetch prices using the API tokens
-          const [fromTokenPrice, toTokenPrice] = await Promise.all([
-            fetchTokenPriceUsd(fromTokenApi),
-            fetchTokenPriceUsd(toTokenApi),
-          ]);
+      if (!destAddr) {
+        setError(`No ${toChain.name} account found`);
+        return;
+      }
 
-          // Calculate the exchange rate based on actual prices
-          let exchangeRate = 1;
-          if (fromTokenPrice.price > 0 && toTokenPrice.price > 0) {
-            exchangeRate = fromTokenPrice.price / toTokenPrice.price;
-          }
-
-          // Store token prices in state for use in UI
-          setTokenPrices({
-            fromPrice: fromTokenPrice.price,
-            toPrice: toTokenPrice.price,
-          });
-
-          const estimated = (parseFloat(amount) * exchangeRate).toFixed(6);
-          setEstimatedAmount(estimated);
-        } catch (error) {
-          console.error("Error fetching token prices:", error);
-          // Fallback to a simple calculation if price fetching fails
-          const fallbackRate =
-            fromToken.symbol === "SOL" && toToken.symbol === "USDC"
-              ? 175.3
-              : 0.0057;
-          const estimated = (parseFloat(amount) * fallbackRate).toFixed(6);
-          setEstimatedAmount(estimated);
-        } finally {
-          setIsLoading(false);
-        }
+      // Create bridge params
+      const params: BridgeParams = {
+        fromChain: fromChain.mayanName,
+        fromToken: fromToken.contract || fromToken.mint || "",
+        toChain: toChain.mayanName,
+        toToken: toToken.contract || toToken.mint || "",
+        amount: parseFloat(amount),
+        destAddr,
+        slippageBps: "300", // 3% slippage
       };
 
-      fetchPrices();
-    } else {
-      setEstimatedAmount("");
-    }
-  }, [fromToken, toToken, amount]);
-
-  // Fetch quote when amount, fromToken, or toToken changes
-  useEffect(() => {
-    const fetchQuote = async () => {
-      if (fromToken && toToken && amount && amount !== "0") {
-        setQuoteLoading(true);
-        const q = await mockFetchQuote({ fromToken, toToken, amount });
-        setQuote(q);
-        setQuoteLoading(false);
+      // Get quote
+      const quote = await getQuote(params);
+      setQuoteResult(quote);
+    } catch (error: any) {
+      console.log("Error fetching routes:", error);
+      // Handle specific error cases
+      if (error.code === "AMOUNT_TOO_SMALL" && error.data?.minAmountIn) {
+        setError(
+          `Amount too small. Minimum amount required: ${error.data.minAmountIn} ${fromToken?.symbol}`,
+        );
       } else {
-        setQuote(null);
+        setError(error.message || "Failed to fetch swap routes");
       }
-    };
-    fetchQuote();
-  }, [fromToken, toToken, amount]);
-
-  // Handle opening token selection modal
-  const openTokenModal = (isFrom: boolean) => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    setIsFromTokenSelection(isFrom);
-    setModalVisible(true);
-    setSearchQuery("");
-    setFilteredTokens(allTokens);
-
-    // Set active chain based on current token selection
-    if (isFrom && fromToken) {
-      setActiveChain(fromToken.chain);
-    } else if (!isFrom && toToken) {
-      setActiveChain(toToken.chain);
-    } else {
-      setActiveChain("solana");
+      setQuoteResult(null);
+    } finally {
+      setIsLoadingQuote(false); // Clear loading state
     }
+  };
+
+  // Show confirmation modal
+  const handleSwapClick = () => {
+    if (!quoteResult || !account) {
+      setError("Missing quote or account information");
+      return;
+    }
+    setShowConfirmationModal(true);
+  };
+
+  // Execute the swap
+  const executeSwap = async () => {
+    if (!quoteResult || !account) {
+      setError("Missing quote or account information");
+      return;
+    }
+
+    try {
+      setIsSwapping(true);
+      setError(null);
+      setShowConfirmationModal(false);
+
+      // Get the destination address based on selected chain type
+      let destAddr = "";
+      if (toChain.id.startsWith("solana")) {
+        destAddr = account.svm.publicKey.toString();
+      } else {
+        destAddr = account.evm.publicKey;
+      }
+
+      // Execute the transaction
+      const txHash = await executeBridgeTransaction(
+        quoteResult.quote,
+        destAddr,
+      );
+
+      // Set transaction hash and show success modal
+      setTransactionHash(txHash);
+      setShowSuccessModal(true);
+
+      // Reset form state
+      setAmount("");
+      setQuoteResult(null);
+      setError(null);
+    } catch (error: any) {
+      console.error("Error executing swap:", error);
+      if (
+        error.message?.includes("Transaction") &&
+        error.message?.includes("reverted")
+      ) {
+        setError(
+          "Transaction failed. Please try again with a different amount or token pair.",
+        );
+      } else {
+        setError(error.message || "Failed to execute swap transaction");
+      }
+    } finally {
+      setIsSwapping(false);
+    }
+  };
+
+  // Copy transaction hash to clipboard
+  const copyTransactionHash = async () => {
+    if (transactionHash) {
+      await Clipboard.setStringAsync(transactionHash);
+      Alert.alert("Copied", "Transaction hash copied to clipboard");
+    }
+  };
+
+  // Open transaction in explorer
+  const openTransactionInExplorer = async () => {
+    if (!transactionHash || !fromChain) return;
+
+    const url = getExplorerUrl(fromChain.id as any, transactionHash);
+    if (url) {
+      await Linking.openURL(url);
+    }
+  };
+
+  // Swap from and to chains/tokens
+  const handleSwapDirection = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    const tempChain = fromChain;
+    const tempToken = fromToken;
+
+    setFromChain(toChain);
+    setFromToken(toToken);
+
+    setToChain(tempChain);
+    setToToken(tempToken);
+
+    // Clear routes as they're no longer valid
+    setQuoteResult(null);
+  };
+
+  // Set maximum amount from token balance
+  const handleSetMaxAmount = () => {
+    if (!fromToken || !fromToken.balance) return;
+
+    setAmount(fromToken.balance);
+    // Trigger route fetch with the new amount
+    setTimeout(() => fetchRoutes(), 100);
   };
 
   // Handle token selection
-  const selectToken = (token: Token) => {
-    Haptics.selectionAsync();
-
-    // Reset token prices when changing tokens
-    setTokenPrices({ fromPrice: 0, toPrice: 0 });
-
-    if (isFromTokenSelection) {
-      setFromToken(token);
-      // Avoid selecting the same token
-      if (
-        toToken &&
-        token.symbol === toToken.symbol &&
-        token.chain === toToken.chain
-      ) {
-        setToToken(null);
-      }
-    } else {
-      setToToken(token);
-      // Avoid selecting the same token
-      if (
-        fromToken &&
-        token.symbol === fromToken.symbol &&
-        token.chain === fromToken.chain
-      ) {
-        setFromToken(null);
-      }
-    }
-
-    setModalVisible(false);
+  const handleSelectFromToken = (token: Token) => {
+    setFromToken(token);
+    setShowFromTokenModal(false);
+    setFromSearchQuery("");
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
   };
 
-  // Handle swap direction
-  const swapTokens = () => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    if (fromToken && toToken) {
-      const temp = fromToken;
-      setFromToken(toToken);
-      setToToken(temp);
-
-      // Reset prices and estimated amount when swapping
-      setTokenPrices({
-        fromPrice: tokenPrices.toPrice,
-        toPrice: tokenPrices.fromPrice,
-      });
-    }
+  const handleSelectToToken = (token: Token) => {
+    setToToken(token);
+    setShowToTokenModal(false);
+    setToSearchQuery("");
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
   };
 
-  // Handle swap button press
-  const handleSwap = () => {
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    // Navigate to confirmation page with swap details (placeholder)
-    router.push({
-      pathname: "/authenticated/swap-confirmation" as any,
-      params: {
-        fromToken: JSON.stringify(fromToken),
-        toToken: JSON.stringify(toToken),
-        amount,
-        estimatedAmount,
-        quote: JSON.stringify(quote),
-      },
-    });
+  // Reset search when modals close
+  const handleCloseFromTokenModal = () => {
+    setShowFromTokenModal(false);
+    setFromSearchQuery("");
   };
 
-  // Filter tokens by chain
-  const filterByChain = (chain: string) => {
-    Haptics.selectionAsync();
-    setActiveChain(chain);
-
-    // Filter tokens by selected chain
-    const chainTokens = allTokens.filter((token) => token.chain === chain);
-    setFilteredTokens(chainTokens);
+  const handleCloseToTokenModal = () => {
+    setShowToTokenModal(false);
+    setToSearchQuery("");
   };
 
-  // Get chain icon
-  const getChainIcon = (chain: string, size: number = 24) => {
-    switch (chain) {
-      case "solana":
-        return <SolanaIcon width={size} height={size} />;
-      case "ethereum":
-        return <EthereumIcon width={size} height={size} />;
-      case "polygon":
-        return <PolygonIcon width={size} height={size} />;
-      case "base":
-        return <BaseIcon width={size} height={size} />;
-      case "arbitrum":
-        return <ArbitrumIcon width={size} height={size} />;
-      default:
-        return <TokenPlaceholderIcon width={size} height={size} symbol="?" />;
-    }
+  // Render chain icon based on chain ID
+  const renderChainIcon = (chainId: string, size = 24) => {
+    const chain = CHAINS.find((c) => c.id === chainId);
+    if (!chain) return null;
+
+    const IconComponent = chain.icon;
+    return <IconComponent width={size} height={size} />;
   };
 
-  // Render token item for selection list
-  const renderTokenItem = ({ item }: { item: Token }) => (
-    <TouchableOpacity
-      style={[
-        styles.tokenItem,
-        { backgroundColor: theme === "dark" ? colors.card : "#FFFFFF" },
-      ]}
-      onPress={() => selectToken(item)}>
-      <View style={styles.tokenIconContainer}>
-        {item.logoURI ? (
-          <Image
-            source={{ uri: item.logoURI }}
-            style={styles.tokenIcon}
-            onError={() => {}}
-          />
-        ) : (
-          <TokenPlaceholderIcon
-            width={40}
-            height={40}
-            symbol={item.symbol[0]}
-          />
-        )}
-      </View>
+  // Render token item
+  const renderTokenItem = ({
+    item,
+    type,
+  }: {
+    item: Token;
+    type: "from" | "to";
+  }) => {
+    const isSelected =
+      type === "from"
+        ? fromToken?.symbol === item.symbol
+        : toToken?.symbol === item.symbol;
 
-      <View style={styles.tokenInfo}>
-        <Text style={[styles.tokenName, { color: colors.text }]}>
-          {item.name}
-        </Text>
-        <View style={styles.tokenChainContainer}>
-          <Text style={[styles.tokenSymbol, { color: colors.secondaryText }]}>
-            {item.symbol}
-          </Text>
-          <View style={styles.chainBadge}>
-            {getChainIcon(item.chain, 16)}
-            <Text style={[styles.chainText, { color: colors.secondaryText }]}>
-              {item.chain.charAt(0).toUpperCase() + item.chain.slice(1)}
-            </Text>
-          </View>
-        </View>
-      </View>
-
-      <View style={styles.tokenBalance}>
-        <Text style={[styles.tokenBalanceText, { color: colors.text }]}>
-          {item.balance || "0.00"}
-        </Text>
-        <Text style={[styles.tokenValueText, { color: colors.secondaryText }]}>
-          {item.value || "$0.00"}
-        </Text>
-      </View>
-    </TouchableOpacity>
-  );
-
-  // Update the selected token display in the swap screen
-  const renderSelectedToken = (token: Token | null, isFrom: boolean) => (
-    <TouchableOpacity
-      style={styles.tokenSelector}
-      onPress={() => openTokenModal(isFrom)}>
-      {token ? (
-        <View style={styles.selectedToken}>
-          {token.logoURI ? (
+    return (
+      <TouchableOpacity
+        style={[
+          styles.tokenListItem,
+          {
+            borderBottomColor: theme === "dark" ? "#2A2A2A" : colors.border,
+          },
+        ]}
+        onPress={() =>
+          type === "from"
+            ? handleSelectFromToken(item)
+            : handleSelectToToken(item)
+        }>
+        <View style={styles.tokenListIconContainer}>
+          {item.logoURI ? (
             <Image
-              source={{ uri: token.logoURI }}
-              style={styles.selectedTokenIcon}
+              source={{ uri: item.logoURI }}
+              style={styles.tokenListIcon}
               onError={() => {}}
             />
           ) : (
-            <TokenPlaceholderIcon
-              width={24}
-              height={24}
-              symbol={token.symbol[0]}
-            />
+            <TokenPlaceholderIcon width={40} height={40} symbol={item.symbol} />
           )}
-          <View style={styles.selectedTokenInfo}>
-            <Text style={[styles.selectedTokenText, { color: colors.text }]}>
-              {token.symbol}
-            </Text>
-            <View style={styles.selectedTokenChain}>
-              {getChainIcon(token.chain, 12)}
-              <Text
-                style={[
-                  styles.selectedTokenChainText,
-                  { color: colors.secondaryText },
-                ]}>
-                {token.chain.charAt(0).toUpperCase() + token.chain.slice(1)}
-              </Text>
-            </View>
-          </View>
-          <Ionicons
-            name="chevron-down"
-            size={16}
-            color={colors.secondaryText}
-          />
         </View>
-      ) : (
-        <View style={styles.selectedToken}>
-          <Text style={[styles.selectTokenText, { color: colors.primary }]}>
-            Select Token
+        <View style={styles.tokenListInfo}>
+          <Text style={[styles.tokenListSymbol, { color: colors.text }]}>
+            {item.symbol}
           </Text>
-          <Ionicons name="chevron-down" size={16} color={colors.primary} />
+          <Text style={[styles.tokenListName, { color: colors.secondaryText }]}>
+            {item.name}
+          </Text>
+          {/* Show token address/mint if available */}
+          {(item.contract || item.mint) && (
+            <Text
+              style={[styles.tokenListAddress, { color: colors.tertiaryText }]}
+              numberOfLines={1}
+              ellipsizeMode="middle">
+              {item.wrappedAddress || item.contract || item.mint}
+            </Text>
+          )}
         </View>
-      )}
-    </TouchableOpacity>
-  );
-
-  // Render chain tabs
-  const renderChainTabs = () => {
-    const chains = ["solana", "ethereum", "polygon", "base", "arbitrum"];
-
-    return (
-      <View style={styles.chainTabsWrapper}>
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.chainTabsContainer}>
-          {chains.map((chain) => (
-            <TouchableOpacity
-              key={chain}
-              style={[
-                styles.chainTab,
-                activeChain === chain && styles.chainTabActive,
-                {
-                  borderColor:
-                    activeChain === chain ? colors.primary : colors.border,
-                  backgroundColor:
-                    activeChain === chain ? colors.primaryLight : "transparent",
-                },
-              ]}
-              onPress={() => filterByChain(chain)}>
-              <View style={styles.chainIconContainer}>
-                {getChainIcon(chain, 20)}
-              </View>
-              <Text
-                style={[
-                  styles.chainTabText,
-                  {
-                    color:
-                      activeChain === chain
-                        ? colors.primary
-                        : colors.secondaryText,
-                  },
-                ]}>
-                {chain.charAt(0).toUpperCase() + chain.slice(1)}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
-      </View>
+        {isSelected && (
+          <Ionicons name="checkmark-circle" size={20} color={colors.primary} />
+        )}
+      </TouchableOpacity>
     );
   };
 
   return (
-    <SafeAreaView
-      style={[styles.container, { backgroundColor: colors.background }]}>
-      <StatusBar style={theme === "dark" ? "light" : "dark"} />
+    <View style={[styles.container, { backgroundColor: colors.background }]}>
       <ScreenHeader title="Swap" />
 
-      <KeyboardAvoidingView
-        style={styles.keyboardAvoidView}
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
-        keyboardVerticalOffset={80}>
-        <ScrollView style={styles.scrollContainer}>
-          <View style={styles.swapContainer}>
-            {/* From Token Selection */}
-            <View
-              style={[
-                styles.tokenSelectionContainer,
-                { backgroundColor: theme === "dark" ? colors.card : "#FFFFFF" },
-              ]}>
-              <View style={styles.tokenSelectionHeader}>
+      <ScrollView
+        style={styles.content}
+        contentContainerStyle={styles.contentContainer}>
+        {/* From Section */}
+        <Text style={[styles.sectionLabel, { color: colors.secondaryText }]}>
+          From
+        </Text>
+        <View style={[styles.selectionCard, { backgroundColor: colors.card }]}>
+          <TouchableOpacity
+            style={styles.chainSelector}
+            onPress={() => setShowFromChainModal(true)}>
+            <View style={styles.chainIconContainer}>
+              {renderChainIcon(fromChain.id, 32)}
+            </View>
+            <View style={styles.chainInfo}>
+              <Text style={[styles.chainSymbol, { color: colors.text }]}>
+                {fromChain.symbol}
+              </Text>
+              <Text style={[styles.chainName, { color: colors.secondaryText }]}>
+                {fromChain.name}
+              </Text>
+            </View>
+            <Ionicons
+              name="chevron-down"
+              size={20}
+              color={colors.secondaryText}
+            />
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.tokenSelector}
+            onPress={() => setShowFromTokenModal(true)}>
+            <View style={styles.tokenInfo}>
+              {fromToken ? (
+                <>
+                  <View style={styles.tokenIconContainer}>
+                    {fromToken.logoURI ? (
+                      <Image
+                        source={{ uri: fromToken.logoURI }}
+                        style={styles.tokenIcon}
+                        onError={() => {}}
+                      />
+                    ) : (
+                      <TokenPlaceholderIcon
+                        width={24}
+                        height={24}
+                        symbol={fromToken.symbol}
+                      />
+                    )}
+                  </View>
+                  <Text style={[styles.tokenSymbol, { color: colors.text }]}>
+                    {fromToken.symbol}
+                  </Text>
+                </>
+              ) : (
                 <Text
                   style={[
-                    styles.tokenSelectionLabel,
+                    styles.selectTokenText,
                     { color: colors.secondaryText },
                   ]}>
-                  From
+                  Select a token
                 </Text>
-                {fromToken && (
-                  <Text
-                    style={[
-                      styles.balanceText,
-                      { color: colors.secondaryText },
-                    ]}>
-                    Balance: {fromToken.balance} {fromToken.symbol}
-                  </Text>
-                )}
-              </View>
-
-              <View style={styles.tokenInputRow}>
-                {renderSelectedToken(fromToken, true)}
-                <TextInput
-                  style={[
-                    styles.amountInput,
-                    { color: colors.text },
-                    amount &&
-                    fromToken &&
-                    parseFloat(amount) > parseFloat(fromToken.balance || "0")
-                      ? { color: "#CB3A2E" }
-                      : null,
-                  ]}
-                  placeholder="0.0"
-                  placeholderTextColor={colors.tertiaryText}
-                  value={amount}
-                  onChangeText={(text) => {
-                    // Allow only one decimal point
-                    let filtered = text.replace(/[^0-9.]/g, "");
-                    const parts = filtered.split(".");
-                    if (parts.length > 2) {
-                      filtered = parts[0] + "." + parts.slice(1).join("");
-                    }
-                    setAmount(filtered);
-                  }}
-                  keyboardType="decimal-pad"
-                />
-              </View>
-
-              {fromToken && (
-                <View style={styles.tokenValueContainer}>
-                  <Text
-                    style={[
-                      styles.tokenValueText,
-                      { color: colors.secondaryText },
-                    ]}>
-                    ≈ $
-                    {tokenPrices.fromPrice > 0 && amount
-                      ? (parseFloat(amount) * tokenPrices.fromPrice).toFixed(2)
-                      : "0.00"}
-                  </Text>
-                </View>
               )}
             </View>
+            <Ionicons
+              name="chevron-down"
+              size={20}
+              color={colors.secondaryText}
+            />
+          </TouchableOpacity>
+        </View>
 
-            {/* Swap Direction Button */}
-            <TouchableOpacity
-              style={[
-                styles.swapDirectionButton,
-                { backgroundColor: colors.primaryLight },
-              ]}
-              onPress={swapTokens}>
-              <Ionicons name="swap-vertical" size={20} color={colors.primary} />
-            </TouchableOpacity>
-
-            {/* To Token Selection */}
-            <View
-              style={[
-                styles.tokenSelectionContainer,
-                { backgroundColor: theme === "dark" ? colors.card : "#FFFFFF" },
-              ]}>
-              <View style={styles.tokenSelectionHeader}>
-                <Text
-                  style={[
-                    styles.tokenSelectionLabel,
-                    { color: colors.secondaryText },
-                  ]}>
-                  To
-                </Text>
-                {toToken && (
-                  <Text
-                    style={[
-                      styles.balanceText,
-                      { color: colors.secondaryText },
-                    ]}>
-                    Balance: {toToken.balance || "0.00"} {toToken.symbol}
-                  </Text>
-                )}
-              </View>
-
-              <View style={styles.tokenInputRow}>
-                {renderSelectedToken(toToken, false)}
-                <View style={styles.estimatedContainer}>
-                  {isLoading ? (
-                    <ActivityIndicator size="small" color={colors.primary} />
-                  ) : (
-                    <Text
-                      style={[styles.estimatedAmount, { color: colors.text }]}>
-                      {estimatedAmount || "0.0"}
-                    </Text>
-                  )}
-                </View>
-              </View>
-
-              {toToken && estimatedAmount && (
-                <View style={styles.tokenValueContainer}>
-                  <Text
-                    style={[
-                      styles.tokenValueText,
-                      { color: colors.secondaryText },
-                    ]}>
-                    ≈ $
-                    {tokenPrices.toPrice > 0
-                      ? (
-                          parseFloat(estimatedAmount) * tokenPrices.toPrice
-                        ).toFixed(2)
-                      : "0.00"}
-                  </Text>
-                </View>
-              )}
-            </View>
-
-            {/* Minimum Received */}
-            {fromToken && toToken && estimatedAmount && (
-              <View
-                style={[
-                  styles.minReceivedContainer,
-                  { backgroundColor: colors.primaryLight },
-                ]}>
-                <Ionicons
-                  name="information-circle-outline"
-                  size={16}
-                  color={colors.primary}
-                />
-                <Text
-                  style={[styles.minReceivedText, { color: colors.primary }]}>
-                  Minimum received:{" "}
-                  {(parseFloat(estimatedAmount) * 0.99).toFixed(6)}{" "}
-                  {toToken.symbol}
-                  {tokenPrices.toPrice > 0
-                    ? ` (≈$${(parseFloat(estimatedAmount) * tokenPrices.toPrice * 0.99).toFixed(2)})`
-                    : ""}
-                </Text>
-              </View>
-            )}
-
-            {quote && (
-              <View
-                style={[
-                  styles.quoteCard,
-                  {
-                    backgroundColor: theme === "dark" ? colors.card : "#181A20",
-                  },
-                ]}>
-                <View style={styles.quoteRow}>
-                  <Text
-                    style={[
-                      styles.quoteLabel,
-                      { color: colors.secondaryText },
-                    ]}>
-                    Pricing
-                  </Text>
-                  <Text style={[styles.quoteValue, { color: colors.text }]}>
-                    1 {fromToken?.symbol} ≈ {quote.price} {toToken?.symbol}
-                  </Text>
-                </View>
-                <View style={styles.quoteRow}>
-                  <Text
-                    style={[
-                      styles.quoteLabel,
-                      { color: colors.secondaryText },
-                    ]}>
-                    Slippage
-                  </Text>
-                  <Text style={[styles.quoteValue, { color: colors.text }]}>
-                    {quote.slippage}%
-                  </Text>
-                </View>
-                <View style={styles.quoteRow}>
-                  <Text
-                    style={[
-                      styles.quoteLabel,
-                      { color: colors.secondaryText },
-                    ]}>
-                    Price Impact
-                  </Text>
-                  <Text style={[styles.quoteValue, { color: colors.text }]}>
-                    {quote.priceImpact}%
-                  </Text>
-                </View>
-                <View style={styles.quoteRow}>
-                  <Text
-                    style={[
-                      styles.quoteLabel,
-                      { color: colors.secondaryText },
-                    ]}>
-                    Fees
-                  </Text>
-                  <Text style={[styles.quoteValue, { color: colors.text }]}>
-                    ${quote.fees.toFixed(2)}
-                  </Text>
-                </View>
-              </View>
-            )}
-          </View>
-        </ScrollView>
-
-        {/* Swap Button */}
-        <View style={styles.buttonContainer}>
+        {/* Swap Direction Button */}
+        <View style={styles.swapDirectionContainer}>
           <TouchableOpacity
             style={[
               styles.swapButton,
-              {
-                backgroundColor:
-                  fromToken &&
-                  amount &&
-                  parseFloat(amount) > parseFloat(fromToken.balance || "0")
-                    ? "#CB3A2E"
-                    : buttonDisabled
-                      ? colors.disabledButton
-                      : colors.primary,
-              },
+              { backgroundColor: colors.primaryLight },
             ]}
-            onPress={handleSwap}
-            disabled={buttonDisabled}>
-            <Text style={styles.swapButtonText}>
-              {!fromToken || !toToken
-                ? "Select Tokens"
-                : !amount
-                  ? "Enter Amount"
-                  : fromToken &&
-                      amount &&
-                      parseFloat(amount) > parseFloat(fromToken.balance || "0")
-                    ? "Not Enough Funds"
-                    : "Swap"}
-            </Text>
+            onPress={handleSwapDirection}>
+            <Ionicons name="swap-vertical" size={20} color={colors.primary} />
           </TouchableOpacity>
         </View>
-      </KeyboardAvoidingView>
 
-      {/* Token Selection Modal */}
-      <Modal
-        visible={modalVisible}
-        animationType="slide"
-        transparent={true}
-        onRequestClose={() => setModalVisible(false)}>
-        <View
+        {/* To Section */}
+        <Text style={[styles.sectionLabel, { color: colors.secondaryText }]}>
+          To
+        </Text>
+        <View style={[styles.selectionCard, { backgroundColor: colors.card }]}>
+          <TouchableOpacity
+            style={styles.chainSelector}
+            onPress={() => setShowToChainModal(true)}>
+            <View style={styles.chainIconContainer}>
+              {renderChainIcon(toChain.id, 32)}
+            </View>
+            <View style={styles.chainInfo}>
+              <Text style={[styles.chainSymbol, { color: colors.text }]}>
+                {toChain.symbol}
+              </Text>
+              <Text style={[styles.chainName, { color: colors.secondaryText }]}>
+                {toChain.name}
+              </Text>
+            </View>
+            <Ionicons
+              name="chevron-down"
+              size={20}
+              color={colors.secondaryText}
+            />
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.tokenSelector}
+            onPress={() => setShowToTokenModal(true)}>
+            <View style={styles.tokenInfo}>
+              {toToken ? (
+                <>
+                  <View style={styles.tokenIconContainer}>
+                    {toToken.logoURI ? (
+                      <Image
+                        source={{ uri: toToken.logoURI }}
+                        style={styles.tokenIcon}
+                        onError={() => {}}
+                      />
+                    ) : (
+                      <TokenPlaceholderIcon
+                        width={24}
+                        height={24}
+                        symbol={toToken.symbol}
+                      />
+                    )}
+                  </View>
+                  <Text style={[styles.tokenSymbol, { color: colors.text }]}>
+                    {toToken.symbol}
+                  </Text>
+                </>
+              ) : (
+                <Text
+                  style={[
+                    styles.selectTokenText,
+                    { color: colors.secondaryText },
+                  ]}>
+                  Select a token
+                </Text>
+              )}
+            </View>
+            <Ionicons
+              name="chevron-down"
+              size={20}
+              color={colors.secondaryText}
+            />
+          </TouchableOpacity>
+        </View>
+
+        {/* Amount Section */}
+        <Text
           style={[
-            styles.modalContainer,
-            {
-              backgroundColor:
-                theme === "dark" ? "rgba(0,0,0,0.9)" : "rgba(0,0,0,0.5)",
-            },
+            styles.sectionLabel,
+            { color: colors.secondaryText, marginTop: 16 },
           ]}>
+          Amount
+        </Text>
+        <View
+          style={[styles.amountContainer, { backgroundColor: colors.card }]}>
+          <TextInput
+            style={[styles.amountInput, { color: colors.text }]}
+            placeholder="0.0"
+            placeholderTextColor={colors.tertiaryText}
+            keyboardType="numeric"
+            value={amount}
+            onChangeText={(text) => {
+              setAmount(text);
+            }}
+          />
+          {fromToken?.balance && (
+            <TouchableOpacity
+              style={[
+                styles.maxButton,
+                { backgroundColor: colors.primaryLight },
+              ]}
+              onPress={handleSetMaxAmount}>
+              <Text style={[styles.maxButtonText, { color: colors.primary }]}>
+                MAX
+              </Text>
+            </TouchableOpacity>
+          )}
+        </View>
+
+        {/* Quote Display */}
+        {(quoteResult || isLoadingQuote) && (
+          <View
+            style={[styles.quoteContainer, { backgroundColor: colors.card }]}>
+            {isLoadingQuote ? (
+              <View style={styles.quoteLoadingContainer}>
+                <ActivityIndicator size="small" color={colors.primary} />
+                <Text
+                  style={[
+                    styles.quoteLoadingText,
+                    { color: colors.secondaryText },
+                  ]}>
+                  Fetching best quote...
+                </Text>
+              </View>
+            ) : (
+              <>
+                <View style={styles.quoteRow}>
+                  <Text
+                    style={[
+                      styles.quoteLabel,
+                      { color: colors.secondaryText },
+                    ]}>
+                    You'll receive at least
+                  </Text>
+                  <Text style={[styles.quoteValue, { color: colors.text }]}>
+                    {quoteResult?.details.minAmountOut}{" "}
+                    {quoteResult?.details.toTokenName}
+                  </Text>
+                </View>
+                <View style={styles.quoteRow}>
+                  <Text
+                    style={[
+                      styles.quoteLabel,
+                      { color: colors.secondaryText },
+                    ]}>
+                    Estimated fee
+                  </Text>
+                  <Text style={[styles.quoteValue, { color: colors.text }]}>
+                    ${quoteResult?.details.estimatedFee}
+                  </Text>
+                </View>
+                <View style={styles.quoteRow}>
+                  <Text
+                    style={[
+                      styles.quoteLabel,
+                      { color: colors.secondaryText },
+                    ]}>
+                    Route
+                  </Text>
+                  <Text style={[styles.quoteValue, { color: colors.text }]}>
+                    {quoteResult?.details.fromChain} →{" "}
+                    {quoteResult?.details.toChain}
+                  </Text>
+                </View>
+              </>
+            )}
+          </View>
+        )}
+
+        {/* Error Display */}
+        {error && (
           <View
             style={[
-              styles.modalContent,
-              { backgroundColor: colors.background },
+              styles.errorContainer,
+              { backgroundColor: colors.error + "15" }, // 15 is hex for 8% opacity
             ]}>
-            <View style={styles.modalHeader}>
-              <Text style={[styles.modalTitle, { color: colors.text }]}>
-                Select Token
+            <Ionicons name="alert-circle" size={20} color={colors.error} />
+            <Text style={[styles.errorText, { color: colors.error }]}>
+              {error}
+            </Text>
+          </View>
+        )}
+
+        {/* Swap Button */}
+        <TouchableOpacity
+          style={[
+            styles.swapActionButton,
+            {
+              backgroundColor:
+                fromToken &&
+                toToken &&
+                amount &&
+                parseFloat(amount) > 0 &&
+                quoteResult
+                  ? colors.primary
+                  : colors.disabledButton,
+            },
+          ]}
+          disabled={
+            !(
+              fromToken &&
+              toToken &&
+              amount &&
+              parseFloat(amount) > 0 &&
+              quoteResult
+            ) || isSwapping
+          }
+          onPress={handleSwapClick}>
+          {isSwapping ? (
+            <ActivityIndicator color="white" size="small" />
+          ) : (
+            <Text style={styles.swapActionButtonText}>Swap</Text>
+          )}
+        </TouchableOpacity>
+      </ScrollView>
+
+      {/* Chain Selection Bottom Sheet - From */}
+      <Modal
+        visible={showFromChainModal}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowFromChainModal(false)}>
+        <View style={styles.bottomSheetOverlay}>
+          <View
+            style={[
+              styles.bottomSheetContainer,
+              {
+                backgroundColor:
+                  theme === "dark" ? "#1E1E1E" : colors.background,
+              },
+            ]}>
+            <View style={styles.bottomSheetHandle}>
+              <View
+                style={[
+                  styles.bottomSheetIndicator,
+                  { backgroundColor: colors.border },
+                ]}
+              />
+            </View>
+
+            <View style={styles.bottomSheetHeader}>
+              <Text style={[styles.bottomSheetTitle, { color: colors.text }]}>
+                Select a network
               </Text>
               <TouchableOpacity
-                style={styles.closeButton}
-                onPress={() => setModalVisible(false)}>
+                style={styles.bottomSheetCloseButton}
+                onPress={() => setShowFromChainModal(false)}>
                 <Ionicons name="close" size={24} color={colors.text} />
               </TouchableOpacity>
             </View>
 
+            <View style={styles.networkGrid}>
+              {CHAINS.map((chain) => (
+                <TouchableOpacity
+                  key={chain.id}
+                  style={[
+                    styles.networkGridItem,
+                    {
+                      backgroundColor:
+                        chain.id === fromChain.id
+                          ? theme === "dark"
+                            ? "#1F3A60"
+                            : colors.primaryLight
+                          : theme === "dark"
+                            ? "#2A2A2A"
+                            : colors.card,
+                    },
+                  ]}
+                  onPress={() => {
+                    setFromChain(chain);
+                    setFromToken(null);
+                    setShowFromChainModal(false);
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  }}>
+                  <View style={styles.networkIconContainer}>
+                    {renderChainIcon(chain.id, 40)}
+                  </View>
+                  <Text style={[styles.networkSymbol, { color: colors.text }]}>
+                    {chain.symbol}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Chain Selection Bottom Sheet - To */}
+      <Modal
+        visible={showToChainModal}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowToChainModal(false)}>
+        <View style={styles.bottomSheetOverlay}>
+          <View
+            style={[
+              styles.bottomSheetContainer,
+              {
+                backgroundColor:
+                  theme === "dark" ? "#1E1E1E" : colors.background,
+              },
+            ]}>
+            <View style={styles.bottomSheetHandle}>
+              <View
+                style={[
+                  styles.bottomSheetIndicator,
+                  { backgroundColor: colors.border },
+                ]}
+              />
+            </View>
+
+            <View style={styles.bottomSheetHeader}>
+              <Text style={[styles.bottomSheetTitle, { color: colors.text }]}>
+                Select a network
+              </Text>
+              <TouchableOpacity
+                style={styles.bottomSheetCloseButton}
+                onPress={() => setShowToChainModal(false)}>
+                <Ionicons name="close" size={24} color={colors.text} />
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.networkGrid}>
+              {CHAINS.map((chain) => (
+                <TouchableOpacity
+                  key={chain.id}
+                  style={[
+                    styles.networkGridItem,
+                    {
+                      backgroundColor:
+                        chain.id === toChain.id
+                          ? theme === "dark"
+                            ? "#1F3A60"
+                            : colors.primaryLight
+                          : theme === "dark"
+                            ? "#2A2A2A"
+                            : colors.card,
+                    },
+                  ]}
+                  onPress={() => {
+                    setToChain(chain);
+                    setToToken(null);
+                    setShowToChainModal(false);
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  }}>
+                  <View style={styles.networkIconContainer}>
+                    {renderChainIcon(chain.id, 40)}
+                  </View>
+                  <Text style={[styles.networkSymbol, { color: colors.text }]}>
+                    {chain.symbol}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Token Selection Bottom Sheet - From */}
+      <Modal
+        visible={showFromTokenModal}
+        transparent
+        animationType="slide"
+        onRequestClose={handleCloseFromTokenModal}>
+        <View style={styles.bottomSheetOverlay}>
+          <View
+            style={[
+              styles.bottomSheetContainer,
+              {
+                backgroundColor:
+                  theme === "dark" ? "#1E1E1E" : colors.background,
+              },
+            ]}>
+            <View style={styles.bottomSheetHandle}>
+              <View
+                style={[
+                  styles.bottomSheetIndicator,
+                  { backgroundColor: colors.border },
+                ]}
+              />
+            </View>
+
+            <View style={styles.bottomSheetHeader}>
+              <Text style={[styles.bottomSheetTitle, { color: colors.text }]}>
+                Select a token
+              </Text>
+              <TouchableOpacity
+                style={styles.bottomSheetCloseButton}
+                onPress={handleCloseFromTokenModal}>
+                <Ionicons name="close" size={24} color={colors.text} />
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.selectedNetworkIndicator}>
+              <Text
+                style={[
+                  styles.selectedNetworkText,
+                  { color: colors.secondaryText },
+                ]}>
+                {fromChain.name} Network
+              </Text>
+            </View>
+
             <View
               style={[
-                styles.searchContainer,
-                { backgroundColor: theme === "dark" ? colors.card : "#F1F1F1" },
+                styles.searchContainerBottomSheet,
+                {
+                  backgroundColor:
+                    theme === "dark" ? "#2A2A2A" : colors.inputBackground,
+                },
               ]}>
               <Ionicons name="search" size={20} color={colors.secondaryText} />
               <TextInput
                 style={[styles.searchInput, { color: colors.text }]}
-                placeholder="Search tokens or CA..."
+                placeholder="Search by name, symbol, or address"
                 placeholderTextColor={colors.tertiaryText}
-                value={searchQuery}
-                onChangeText={setSearchQuery}
+                value={fromSearchQuery}
+                onChangeText={setFromSearchQuery}
                 autoFocus={false}
+                returnKeyType="search"
               />
-              {searchQuery.length > 0 && (
-                <TouchableOpacity
-                  style={styles.clearButton}
-                  onPress={() => setSearchQuery("")}>
+              {fromSearchQuery !== "" && (
+                <TouchableOpacity onPress={() => setFromSearchQuery("")}>
                   <Ionicons
                     name="close-circle"
                     size={20}
@@ -1025,39 +1036,528 @@ export default function SwapScreen() {
               )}
             </View>
 
-            {/* Chain Tabs */}
-            {renderChainTabs()}
-
-            {/* Token List */}
-            <FlatList
-              data={filteredTokens}
-              renderItem={renderTokenItem}
-              keyExtractor={(item) =>
-                `${item.chain}-${item.symbol}-${item.mint || item.contract}`
-              }
-              contentContainerStyle={styles.tokenListContent}
-              showsVerticalScrollIndicator={false}
-              ListEmptyComponent={() => (
-                <View style={styles.emptyListContainer}>
-                  <Ionicons
-                    name="alert-circle-outline"
-                    size={48}
-                    color={colors.secondaryText}
-                  />
+            {isLoadingTokens ? (
+              <View style={styles.loadingTokensContainer}>
+                <ActivityIndicator size="large" color={colors.primary} />
+                <Text
+                  style={[
+                    styles.emptyResultsText,
+                    { color: colors.secondaryText },
+                  ]}>
+                  Loading tokens...
+                </Text>
+              </View>
+            ) : filteredFromTokens.length === 0 ? (
+              <View style={styles.emptyResultsContainer}>
+                <Ionicons
+                  name="search-outline"
+                  size={50}
+                  color={colors.secondaryText}
+                />
+                <Text
+                  style={[
+                    styles.emptyResultsText,
+                    { color: colors.secondaryText },
+                  ]}>
+                  No tokens found matching "{fromSearchQuery}"
+                </Text>
+                <TouchableOpacity
+                  style={[
+                    styles.clearSearchButton,
+                    { backgroundColor: colors.primaryLight },
+                  ]}
+                  onPress={() => setFromSearchQuery("")}>
                   <Text
                     style={[
-                      styles.emptyListText,
-                      { color: colors.secondaryText },
+                      styles.clearSearchButtonText,
+                      { color: colors.primary },
                     ]}>
-                    No tokens found
+                    Clear Search
                   </Text>
-                </View>
-              )}
-            />
+                </TouchableOpacity>
+              </View>
+            ) : (
+              <FlatList
+                style={styles.tokenList}
+                data={filteredFromTokens}
+                keyExtractor={(item, index) => `${item.symbol}-${index}`}
+                renderItem={({ item }) =>
+                  renderTokenItem({ item, type: "from" })
+                }
+                showsVerticalScrollIndicator={false}
+                keyboardShouldPersistTaps="handled"
+                initialNumToRender={10}
+                maxToRenderPerBatch={20}
+                windowSize={10}
+              />
+            )}
           </View>
         </View>
       </Modal>
-    </SafeAreaView>
+
+      {/* Token Selection Bottom Sheet - To */}
+      <Modal
+        visible={showToTokenModal}
+        transparent
+        animationType="slide"
+        onRequestClose={handleCloseToTokenModal}>
+        <View style={styles.bottomSheetOverlay}>
+          <View
+            style={[
+              styles.bottomSheetContainer,
+              {
+                backgroundColor:
+                  theme === "dark" ? "#1E1E1E" : colors.background,
+              },
+            ]}>
+            <View style={styles.bottomSheetHandle}>
+              <View
+                style={[
+                  styles.bottomSheetIndicator,
+                  { backgroundColor: colors.border },
+                ]}
+              />
+            </View>
+
+            <View style={styles.bottomSheetHeader}>
+              <Text style={[styles.bottomSheetTitle, { color: colors.text }]}>
+                Select a token
+              </Text>
+              <TouchableOpacity
+                style={styles.bottomSheetCloseButton}
+                onPress={handleCloseToTokenModal}>
+                <Ionicons name="close" size={24} color={colors.text} />
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.selectedNetworkIndicator}>
+              <Text
+                style={[
+                  styles.selectedNetworkText,
+                  { color: colors.secondaryText },
+                ]}>
+                {toChain.name} Network
+              </Text>
+            </View>
+
+            <View
+              style={[
+                styles.searchContainerBottomSheet,
+                {
+                  backgroundColor:
+                    theme === "dark" ? "#2A2A2A" : colors.inputBackground,
+                },
+              ]}>
+              <Ionicons name="search" size={20} color={colors.secondaryText} />
+              <TextInput
+                style={[styles.searchInput, { color: colors.text }]}
+                placeholder="Search by name, symbol, or address"
+                placeholderTextColor={colors.tertiaryText}
+                value={toSearchQuery}
+                onChangeText={setToSearchQuery}
+                autoFocus={false}
+                returnKeyType="search"
+              />
+              {toSearchQuery !== "" && (
+                <TouchableOpacity onPress={() => setToSearchQuery("")}>
+                  <Ionicons
+                    name="close-circle"
+                    size={20}
+                    color={colors.secondaryText}
+                  />
+                </TouchableOpacity>
+              )}
+            </View>
+
+            {isLoadingTokens ? (
+              <View style={styles.loadingTokensContainer}>
+                <ActivityIndicator size="large" color={colors.primary} />
+                <Text
+                  style={[
+                    styles.emptyResultsText,
+                    { color: colors.secondaryText },
+                  ]}>
+                  Loading tokens...
+                </Text>
+              </View>
+            ) : filteredToTokens.length === 0 ? (
+              <View style={styles.emptyResultsContainer}>
+                <Ionicons
+                  name="search-outline"
+                  size={50}
+                  color={colors.secondaryText}
+                />
+                <Text
+                  style={[
+                    styles.emptyResultsText,
+                    { color: colors.secondaryText },
+                  ]}>
+                  No tokens found matching "{toSearchQuery}"
+                </Text>
+                <TouchableOpacity
+                  style={[
+                    styles.clearSearchButton,
+                    { backgroundColor: colors.primaryLight },
+                  ]}
+                  onPress={() => setToSearchQuery("")}>
+                  <Text
+                    style={[
+                      styles.clearSearchButtonText,
+                      { color: colors.primary },
+                    ]}>
+                    Clear Search
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            ) : (
+              <FlatList
+                style={styles.tokenList}
+                data={filteredToTokens}
+                keyExtractor={(item, index) => `${item.symbol}-${index}`}
+                renderItem={({ item }) => renderTokenItem({ item, type: "to" })}
+                showsVerticalScrollIndicator={false}
+                keyboardShouldPersistTaps="handled"
+                initialNumToRender={10}
+                maxToRenderPerBatch={20}
+                windowSize={10}
+              />
+            )}
+          </View>
+        </View>
+      </Modal>
+
+      {/* Confirmation Modal */}
+      <Modal
+        visible={showConfirmationModal}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowConfirmationModal(false)}>
+        <View style={styles.bottomSheetOverlay}>
+          <View
+            style={[
+              styles.bottomSheetContainer,
+              {
+                backgroundColor:
+                  theme === "dark" ? "#1E1E1E" : colors.background,
+              },
+            ]}>
+            <View style={styles.bottomSheetHandle}>
+              <View
+                style={[
+                  styles.bottomSheetIndicator,
+                  { backgroundColor: colors.border },
+                ]}
+              />
+            </View>
+
+            <View style={styles.bottomSheetHeader}>
+              <Text style={[styles.bottomSheetTitle, { color: colors.text }]}>
+                Confirm Swap
+              </Text>
+              <TouchableOpacity
+                style={styles.bottomSheetCloseButton}
+                onPress={() => setShowConfirmationModal(false)}>
+                <Ionicons name="close" size={24} color={colors.text} />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={styles.confirmationContent}>
+              {/* From Token */}
+              <View
+                style={[
+                  styles.confirmationCard,
+                  { backgroundColor: colors.card },
+                ]}>
+                <Text
+                  style={[
+                    styles.confirmationLabel,
+                    { color: colors.secondaryText },
+                  ]}>
+                  You Pay
+                </Text>
+                <View style={styles.confirmationTokenContainer}>
+                  <View style={styles.confirmationTokenInfo}>
+                    {fromToken?.logoURI ? (
+                      <Image
+                        source={{ uri: fromToken.logoURI }}
+                        style={styles.confirmationTokenIcon}
+                      />
+                    ) : (
+                      <TokenPlaceholderIcon
+                        width={32}
+                        height={32}
+                        symbol={fromToken?.symbol || ""}
+                      />
+                    )}
+                    <View style={styles.confirmationTokenDetails}>
+                      <Text
+                        style={[
+                          styles.confirmationTokenAmount,
+                          { color: colors.text },
+                        ]}>
+                        {amount} {fromToken?.symbol}
+                      </Text>
+                      <Text
+                        style={[
+                          styles.confirmationChainName,
+                          { color: colors.secondaryText },
+                        ]}>
+                        on {fromChain.name}
+                      </Text>
+                    </View>
+                  </View>
+                </View>
+              </View>
+
+              {/* Arrow Icon */}
+              <View style={styles.confirmationArrowContainer}>
+                <View
+                  style={[
+                    styles.confirmationArrowCircle,
+                    { backgroundColor: colors.primaryLight },
+                  ]}>
+                  <Ionicons
+                    name="arrow-down"
+                    size={24}
+                    color={colors.primary}
+                  />
+                </View>
+              </View>
+
+              {/* To Token */}
+              <View
+                style={[
+                  styles.confirmationCard,
+                  { backgroundColor: colors.card },
+                ]}>
+                <Text
+                  style={[
+                    styles.confirmationLabel,
+                    { color: colors.secondaryText },
+                  ]}>
+                  You Receive
+                </Text>
+                <View style={styles.confirmationTokenContainer}>
+                  <View style={styles.confirmationTokenInfo}>
+                    {toToken?.logoURI ? (
+                      <Image
+                        source={{ uri: toToken.logoURI }}
+                        style={styles.confirmationTokenIcon}
+                      />
+                    ) : (
+                      <TokenPlaceholderIcon
+                        width={32}
+                        height={32}
+                        symbol={toToken?.symbol || ""}
+                      />
+                    )}
+                    <View style={styles.confirmationTokenDetails}>
+                      <Text
+                        style={[
+                          styles.confirmationTokenAmount,
+                          { color: colors.text },
+                        ]}>
+                        {quoteResult?.details.minAmountOut} {toToken?.symbol}
+                      </Text>
+                      <Text
+                        style={[
+                          styles.confirmationChainName,
+                          { color: colors.secondaryText },
+                        ]}>
+                        on {toChain.name}
+                      </Text>
+                    </View>
+                  </View>
+                </View>
+              </View>
+
+              {/* Transaction Details */}
+              <View
+                style={[
+                  styles.confirmationDetailsCard,
+                  { backgroundColor: colors.card },
+                ]}>
+                <View style={styles.confirmationDetailRow}>
+                  <Text
+                    style={[
+                      styles.confirmationDetailLabel,
+                      { color: colors.secondaryText },
+                    ]}>
+                    Rate
+                  </Text>
+                  <Text
+                    style={[
+                      styles.confirmationDetailValue,
+                      { color: colors.text },
+                    ]}>
+                    1 {fromToken?.symbol} ≈{" "}
+                    {(
+                      Number(quoteResult?.details.minAmountOut) / Number(amount)
+                    ).toFixed(6)}{" "}
+                    {toToken?.symbol}
+                  </Text>
+                </View>
+
+                <View style={styles.confirmationDetailRow}>
+                  <Text
+                    style={[
+                      styles.confirmationDetailLabel,
+                      { color: colors.secondaryText },
+                    ]}>
+                    Network Fee
+                  </Text>
+                  <Text
+                    style={[
+                      styles.confirmationDetailValue,
+                      { color: colors.text },
+                    ]}>
+                    ${quoteResult?.details.estimatedFee}
+                  </Text>
+                </View>
+
+                <View style={styles.confirmationDetailRow}>
+                  <Text
+                    style={[
+                      styles.confirmationDetailLabel,
+                      { color: colors.secondaryText },
+                    ]}>
+                    Route
+                  </Text>
+                  <Text
+                    style={[
+                      styles.confirmationDetailValue,
+                      { color: colors.text },
+                    ]}>
+                    {quoteResult?.details.fromChain} →{" "}
+                    {quoteResult?.details.toChain}
+                  </Text>
+                </View>
+              </View>
+            </ScrollView>
+
+            <View style={styles.confirmationActions}>
+              <TouchableOpacity
+                style={[
+                  styles.confirmationCancelButton,
+                  { backgroundColor: colors.card },
+                ]}
+                onPress={() => setShowConfirmationModal(false)}>
+                <Text
+                  style={[
+                    styles.confirmationCancelButtonText,
+                    { color: colors.text },
+                  ]}>
+                  Cancel
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[
+                  styles.confirmationConfirmButton,
+                  { backgroundColor: colors.primary },
+                ]}
+                onPress={executeSwap}>
+                <Text style={styles.confirmationConfirmButtonText}>
+                  Confirm Swap
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Success Modal */}
+      <Modal
+        visible={showSuccessModal}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowSuccessModal(false)}>
+        <View style={styles.bottomSheetOverlay}>
+          <View
+            style={[
+              styles.bottomSheetContainer,
+              {
+                backgroundColor:
+                  theme === "dark" ? "#1E1E1E" : colors.background,
+              },
+            ]}>
+            <View style={styles.successContent}>
+              {/* Success Animation */}
+              <View style={styles.successIconContainer}>
+                <View
+                  style={[
+                    styles.successIconCircle,
+                    { backgroundColor: colors.primary + "20" },
+                  ]}>
+                  <Ionicons name="checkmark" size={48} color={colors.primary} />
+                </View>
+              </View>
+
+              <Text style={[styles.successTitle, { color: colors.text }]}>
+                Swap Successful!
+              </Text>
+
+              <Text
+                style={[
+                  styles.successDescription,
+                  { color: colors.secondaryText },
+                ]}>
+                Your swap has been successfully executed
+              </Text>
+
+              {/* Transaction Hash Card */}
+              <TouchableOpacity
+                style={[styles.hashCard, { backgroundColor: colors.card }]}
+                onPress={copyTransactionHash}>
+                <Text
+                  style={[styles.hashLabel, { color: colors.secondaryText }]}>
+                  Transaction Hash
+                </Text>
+                <View style={styles.hashContainer}>
+                  <Text
+                    style={[styles.hashText, { color: colors.text }]}
+                    numberOfLines={1}>
+                    {transactionHash}
+                  </Text>
+                  <Ionicons
+                    name="copy-outline"
+                    size={20}
+                    color={colors.primary}
+                  />
+                </View>
+              </TouchableOpacity>
+
+              {/* Action Buttons */}
+              <View style={styles.successActions}>
+                <TouchableOpacity
+                  style={[
+                    styles.explorerButton,
+                    { backgroundColor: colors.card },
+                  ]}
+                  onPress={openTransactionInExplorer}>
+                  <Text
+                    style={[styles.explorerButtonText, { color: colors.text }]}>
+                    View in Explorer
+                  </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[
+                    styles.doneButton,
+                    { backgroundColor: colors.primary },
+                  ]}
+                  onPress={() => {
+                    setShowSuccessModal(false);
+                    router.back();
+                  }}>
+                  <Text style={styles.doneButtonText}>Back to Home</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </View>
+      </Modal>
+    </View>
   );
 }
 
@@ -1065,365 +1565,515 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
-  keyboardAvoidView: {
+  content: {
     flex: 1,
   },
-  scrollContainer: {
-    flex: 1,
-  },
-  swapContainer: {
+  contentContainer: {
     padding: 16,
+    paddingBottom: 40,
   },
-  tokenSelectionContainer: {
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 16,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  tokenSelectionHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 12,
-  },
-  tokenSelectionLabel: {
+  sectionLabel: {
     fontSize: 16,
     fontWeight: "500",
+    marginBottom: 8,
   },
-  balanceText: {
-    fontSize: 14,
+  selectionCard: {
+    borderRadius: 16,
+    overflow: "hidden",
   },
-  tokenInputRow: {
+  chainSelector: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
+    padding: 16,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: "rgba(0,0,0,0.1)",
+  },
+  chainIconContainer: {
+    marginRight: 12,
+  },
+  chainInfo: {
+    flex: 1,
+  },
+  chainSymbol: {
+    fontSize: 18,
+    fontWeight: "600",
+  },
+  chainName: {
+    fontSize: 14,
   },
   tokenSelector: {
     flexDirection: "row",
     alignItems: "center",
+    padding: 16,
+    justifyContent: "space-between",
   },
-  selectedToken: {
+  tokenInfo: {
     flexDirection: "row",
     alignItems: "center",
-    borderRadius: 20,
-    paddingVertical: 6,
-    paddingHorizontal: 12,
   },
-  selectedTokenIcon: {
+  tokenIconContainer: {
+    marginRight: 12,
+  },
+  tokenIcon: {
     width: 24,
     height: 24,
     borderRadius: 12,
-    marginRight: 8,
   },
-  selectedTokenText: {
+  tokenSymbol: {
     fontSize: 16,
-    fontWeight: "600",
-    marginRight: 4,
+    fontWeight: "500",
   },
   selectTokenText: {
     fontSize: 16,
-    fontWeight: "600",
-    marginRight: 4,
   },
-  amountInput: {
-    fontSize: 28,
-    fontWeight: "bold",
-    textAlign: "right",
-    minWidth: 150,
+  swapDirectionContainer: {
+    alignItems: "center",
+    marginVertical: 8,
   },
-  estimatedContainer: {
-    flex: 1,
-    alignItems: "flex-end",
-  },
-  estimatedAmount: {
-    fontSize: 28,
-    fontWeight: "bold",
-    textAlign: "right",
-  },
-  tokenValueContainer: {
-    marginTop: 8,
-    alignItems: "flex-end",
-  },
-  tokenValueText: {
-    fontSize: 14,
-  },
-  swapDirectionButton: {
+  swapButton: {
     width: 40,
     height: 40,
     borderRadius: 20,
-    alignItems: "center",
     justifyContent: "center",
-    alignSelf: "center",
-    marginTop: -28,
-    marginBottom: -12,
-    zIndex: 10,
+    alignItems: "center",
   },
-  swapDetailsContainer: {
+  amountContainer: {
+    flexDirection: "row",
+    alignItems: "center",
     borderRadius: 16,
     padding: 16,
-    marginTop: 16,
-    marginBottom: 16,
   },
-  swapDetailRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 12,
+  amountInput: {
+    flex: 1,
+    fontSize: 24,
+    fontWeight: "600",
   },
-  swapDetailLabel: {
-    fontSize: 14,
-  },
-  swapDetailValue: {
-    fontSize: 14,
-    fontWeight: "500",
-  },
-  slippageContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  editButton: {
-    marginLeft: 8,
-    padding: 4,
-  },
-  minReceivedContainer: {
-    flexDirection: "row",
-    alignItems: "center",
+  maxButton: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
     borderRadius: 12,
-    padding: 12,
-    marginBottom: 16,
   },
-  minReceivedText: {
-    fontSize: 14,
-    marginLeft: 8,
+  maxButtonText: {
+    fontSize: 12,
+    fontWeight: "600",
   },
-  buttonContainer: {
-    padding: 16,
-    marginBottom: Platform.OS === "ios" ? 0 : 16,
-  },
-  swapButton: {
+  swapActionButton: {
     height: 56,
     borderRadius: 28,
-    alignItems: "center",
     justifyContent: "center",
+    alignItems: "center",
+    marginTop: 24,
   },
-  swapButtonText: {
-    color: "#FFFFFF",
+  swapActionButtonText: {
+    color: "white",
     fontSize: 18,
     fontWeight: "600",
   },
-  modalContainer: {
+  modalOverlay: {
     flex: 1,
-    justifyContent: "flex-end",
+    backgroundColor: "rgba(0,0,0,0.5)",
+    justifyContent: "center",
+    alignItems: "center",
   },
-  modalContent: {
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    height: "80%",
+  modalContainer: {
+    width: "90%",
+    maxHeight: "80%",
+    borderRadius: 16,
+    overflow: "hidden",
   },
   modalHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
     padding: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: "rgba(0,0,0,0.05)",
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: "rgba(0,0,0,0.1)",
   },
   modalTitle: {
     fontSize: 18,
     fontWeight: "600",
   },
-  closeButton: {
-    padding: 4,
+  chainsGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    padding: 16,
+  },
+  chainGridItem: {
+    width: "30%",
+    aspectRatio: 1,
+    margin: "1.65%",
+    borderRadius: 12,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  chainGridIcon: {
+    marginBottom: 8,
+  },
+  chainGridSymbol: {
+    fontSize: 14,
+    fontWeight: "500",
   },
   searchContainer: {
     flexDirection: "row",
     alignItems: "center",
     margin: 16,
-    padding: 10,
-    borderRadius: 24,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+  },
+  searchContainerBottomSheet: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginHorizontal: 16,
+    marginVertical: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 12,
   },
   searchInput: {
     flex: 1,
+    paddingHorizontal: 8,
     fontSize: 16,
-    marginLeft: 8,
   },
-  clearButton: {
-    padding: 4,
-  },
-  quickTokensScrollView: {
-    maxHeight: 50,
-  },
-  quickTokensContainer: {
-    paddingHorizontal: 16,
-    paddingTop: 4,
-    paddingBottom: 12,
-  },
-  tokenChip: {
-    flexDirection: "row",
+  loadingTokensContainer: {
+    padding: 24,
     alignItems: "center",
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 24,
-    marginRight: 8,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
-    elevation: 1,
   },
-  tokenChipIcon: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    marginRight: 8,
-  },
-  tokenChipText: {
-    fontSize: 14,
-    fontWeight: "500",
-  },
-  chainTabsWrapper: {
-    marginVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: "rgba(0,0,0,0.05)",
-    paddingBottom: 12,
-  },
-  chainTabsContainer: {
-    paddingHorizontal: 16,
-    gap: 8,
-  },
-  chainTab: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 20,
-    borderWidth: 1,
-    marginRight: 8,
-    minWidth: 120,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
-    elevation: 1,
-  },
-  chainTabActive: {
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  chainIconContainer: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    alignItems: "center",
-    justifyContent: "center",
-    marginRight: 8,
-  },
-  chainTabText: {
-    fontSize: 14,
-    fontWeight: "600",
-  },
-  tokenListContent: {
-    paddingHorizontal: 16,
-    paddingBottom: 24,
-  },
-  tokenItem: {
+  tokenListItem: {
     flexDirection: "row",
     alignItems: "center",
     padding: 16,
-    borderRadius: 12,
-    marginBottom: 8,
+    borderBottomWidth: StyleSheet.hairlineWidth,
   },
-  tokenIconContainer: {
-    marginRight: 12,
+  tokenListIconContainer: {
+    marginRight: 16,
   },
-  tokenIcon: {
+  tokenListIcon: {
     width: 40,
     height: 40,
     borderRadius: 20,
   },
-  tokenInfo: {
+  tokenListInfo: {
     flex: 1,
   },
-  tokenName: {
+  tokenListSymbol: {
     fontSize: 16,
-    fontWeight: "500",
+    fontWeight: "600",
   },
-  tokenSymbol: {
+  tokenListName: {
     fontSize: 14,
   },
-  tokenBalance: {
-    alignItems: "flex-end",
+  tokenListAddress: {
+    fontSize: 12,
+    marginTop: 2,
   },
-  tokenBalanceText: {
-    fontSize: 16,
+  tokenList: {
+    maxHeight: 400,
+  },
+  // Bottom Sheet Styles
+  bottomSheetOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.5)",
+    justifyContent: "flex-end",
+  },
+  bottomSheetContainer: {
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    paddingBottom: 30,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: -2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 5,
+    elevation: 5,
+    maxHeight: "80%",
+  },
+  bottomSheetHandle: {
+    width: "100%",
+    alignItems: "center",
+    paddingTop: 12,
+    paddingBottom: 8,
+  },
+  bottomSheetIndicator: {
+    width: 40,
+    height: 4,
+    borderRadius: 2,
+    opacity: 0.5,
+  },
+  bottomSheetHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 20,
+    paddingBottom: 16,
+  },
+  bottomSheetTitle: {
+    fontSize: 18,
+    fontWeight: "700",
+  },
+  bottomSheetCloseButton: {
+    padding: 4,
+  },
+  selectedNetworkIndicator: {
+    paddingHorizontal: 20,
+    paddingBottom: 8,
+  },
+  selectedNetworkText: {
+    fontSize: 14,
     fontWeight: "500",
   },
-  emptyListContainer: {
+  // Network Grid Styles
+  networkGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "center",
+    padding: 16,
+  },
+  networkGridItem: {
+    width: "30%",
+    aspectRatio: 1,
+    margin: 6,
+    borderRadius: 12,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  networkIconContainer: {
+    marginBottom: 12,
+  },
+  networkSymbol: {
+    fontSize: 16,
+    fontWeight: "600",
+  },
+  // Empty Results
+  emptyResultsContainer: {
+    flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    paddingVertical: 40,
+    padding: 30,
   },
-  emptyListText: {
-    marginTop: 16,
+  emptyResultsText: {
     fontSize: 16,
+    textAlign: "center",
+    marginTop: 16,
+    marginBottom: 20,
   },
-  tokenChainContainer: {
+  clearSearchButton: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+  },
+  clearSearchButtonText: {
+    fontSize: 14,
+    fontWeight: "600",
+  },
+  errorContainer: {
     flexDirection: "row",
     alignItems: "center",
-    marginTop: 4,
-  },
-  chainBadge: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "rgba(0,0,0,0.05)",
-    paddingHorizontal: 6,
-    paddingVertical: 4,
+    padding: 12,
     borderRadius: 12,
+    marginTop: 16,
+  },
+  errorText: {
     marginLeft: 8,
+    flex: 1,
+    fontSize: 14,
+    fontWeight: "500",
   },
-  chainText: {
-    fontSize: 12,
-    marginLeft: 4,
-  },
-  selectedTokenInfo: {
-    marginRight: 4,
-  },
-  selectedTokenChain: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "rgba(0,0,0,0.05)",
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 12,
-    marginTop: 4,
-  },
-  selectedTokenChainText: {
-    fontSize: 12,
-    marginLeft: 4,
-  },
-  quoteCard: {
+  quoteContainer: {
     borderRadius: 16,
     padding: 16,
-    marginVertical: 12,
+    marginTop: 16,
   },
   quoteRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 8,
+    marginBottom: 12,
   },
   quoteLabel: {
-    fontSize: 15,
+    fontSize: 14,
   },
   quoteValue: {
-    fontSize: 15,
+    fontSize: 14,
+    fontWeight: "500",
+  },
+  quoteLoadingContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 16,
+  },
+  quoteLoadingText: {
+    marginLeft: 12,
+    fontSize: 14,
+    fontWeight: "500",
+  },
+  // Confirmation Modal Styles
+  confirmationContent: {
+    padding: 16,
+  },
+  confirmationCard: {
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 8,
+  },
+  confirmationLabel: {
+    fontSize: 14,
+    marginBottom: 8,
+  },
+  confirmationTokenContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  confirmationTokenInfo: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  confirmationTokenIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    marginRight: 12,
+  },
+  confirmationTokenDetails: {
+    flex: 1,
+  },
+  confirmationTokenAmount: {
+    fontSize: 18,
+    fontWeight: "600",
+  },
+  confirmationChainName: {
+    fontSize: 14,
+  },
+  confirmationArrowContainer: {
+    alignItems: "center",
+    marginVertical: 8,
+  },
+  confirmationArrowCircle: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  confirmationDetailsCard: {
+    borderRadius: 16,
+    padding: 16,
+    marginTop: 16,
+  },
+  confirmationDetailRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 12,
+  },
+  confirmationDetailLabel: {
+    fontSize: 14,
+  },
+  confirmationDetailValue: {
+    fontSize: 14,
+    fontWeight: "500",
+  },
+  confirmationActions: {
+    flexDirection: "row",
+    padding: 16,
+    gap: 12,
+  },
+  confirmationCancelButton: {
+    flex: 1,
+    height: 56,
+    borderRadius: 28,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  confirmationCancelButtonText: {
+    fontSize: 16,
+    fontWeight: "600",
+  },
+  confirmationConfirmButton: {
+    flex: 1,
+    height: 56,
+    borderRadius: 28,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  confirmationConfirmButtonText: {
+    color: "white",
+    fontSize: 16,
+    fontWeight: "600",
+  },
+  // Success Modal Styles
+  successContent: {
+    padding: 24,
+    alignItems: "center",
+  },
+  successIconContainer: {
+    marginBottom: 24,
+  },
+  successIconCircle: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  successTitle: {
+    fontSize: 24,
+    fontWeight: "700",
+    marginBottom: 8,
+  },
+  successDescription: {
+    fontSize: 16,
+    textAlign: "center",
+    marginBottom: 24,
+  },
+  hashCard: {
+    width: "100%",
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 24,
+  },
+  hashLabel: {
+    fontSize: 14,
+    marginBottom: 8,
+  },
+  hashContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  hashText: {
+    fontSize: 14,
+    fontWeight: "500",
+    flex: 1,
+    marginRight: 12,
+  },
+  successActions: {
+    width: "100%",
+    flexDirection: "row",
+    gap: 12,
+  },
+  explorerButton: {
+    flex: 1,
+    height: 56,
+    borderRadius: 28,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  explorerButtonText: {
+    fontSize: 16,
+    fontWeight: "600",
+  },
+  doneButton: {
+    flex: 1,
+    height: 56,
+    borderRadius: 28,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  doneButtonText: {
+    color: "white",
+    fontSize: 16,
     fontWeight: "600",
   },
 });

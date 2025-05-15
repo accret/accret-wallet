@@ -13,7 +13,7 @@ import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect } from "@react-navigation/native";
 import {
-  useCurrentAccount,
+  getCurrentAccount,
   getAllAccounts,
   switchAccount,
   disconnectAllAccounts,
@@ -45,8 +45,7 @@ export default function AccountSettings() {
     try {
       setLoading(true);
       const allAccounts = await getAllAccounts();
-      // eslint-disable-next-line react-hooks/rules-of-hooks
-      const current = await useCurrentAccount();
+      const current = await getCurrentAccount();
 
       setAccounts(allAccounts);
       setCurrentAccount(current);

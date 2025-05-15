@@ -14,12 +14,7 @@ import { useRouter } from "expo-router";
 import { useFocusEffect } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
-import {
-  useCurrentAccount,
-  useCurrentSVMAccount,
-  useCurrentEVMAccount,
-  getAllAccountsInfo,
-} from "@/lib/accountStorage";
+import { getCurrentAccount, getAllAccountsInfo } from "@/lib/accountStorage";
 import {
   fetchPortfolioData,
   groupTokensByChain,
@@ -68,12 +63,15 @@ export default function PortfolioScreen() {
   const loadWalletData = async () => {
     try {
       // Get current account
-      // eslint-disable-next-line react-hooks/rules-of-hooks
-      const account = await useCurrentAccount();
-      // eslint-disable-next-line react-hooks/rules-of-hooks
-      const svmAccount = await useCurrentSVMAccount();
-      // eslint-disable-next-line react-hooks/rules-of-hooks
-      const evmAccount = await useCurrentEVMAccount();
+      const account = await getCurrentAccount();
+
+      if (!account) {
+        Alert.alert("Error", "No wallet account found");
+        return;
+      }
+
+      const svmAccount = account.svm;
+      const evmAccount = account.evm;
 
       if (account) {
         setCurrentWallet({

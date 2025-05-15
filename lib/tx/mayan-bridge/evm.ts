@@ -25,6 +25,11 @@ export async function swapEVM(quote: Quote, destAddr: string): Promise<string> {
     throw new Error("No EVM account found");
   }
 
+  const referrerAddress = {
+    solana: "69izdTrBfvhpuq8LgWifstGbHTZC6DKn1w5wLpdjapfF",
+    evm: "0xD0208Bfe9Ae201Cc2baE4e4b5a74561472A7a910",
+  };
+
   const privateKey = account.evm.privateKey;
   const wallet = new Wallet(privateKey);
 
@@ -68,7 +73,7 @@ export async function swapEVM(quote: Quote, destAddr: string): Promise<string> {
       quote,
       walletSrcAddr,
       destAddr,
-      null,
+      referrerAddress,
       signer as any,
       permit,
       null,
@@ -195,22 +200,27 @@ async function getErcPermitOrAllowance(
         s,
       };
     } else {
-      // Token doesn't support permit, use approval instead
-      const allowance: bigint = await tokenContract.allowance(
-        walletSrcAddr,
-        addresses.MAYAN_FORWARDER_CONTRACT,
-      );
-
-      if (allowance < amountIn) {
+      // For tokens without permit, skip allowance check and go straight to approve
+      try {
+        // Direct approval without checking allowance first
         const approveTx = await tokenContract.approve(
           addresses.MAYAN_FORWARDER_CONTRACT,
           amountIn,
         );
-
         await approveTx.wait();
+        return undefined;
+      } catch (approveError) {
+        console.error("Error during token approval:", approveError);
+        let errorMessage = "Failed to approve token transfer";
+        if (
+          approveError &&
+          typeof approveError === "object" &&
+          "message" in approveError
+        ) {
+          errorMessage += ": " + (approveError as { message: string }).message;
+        }
+        throw new Error(errorMessage);
       }
-
-      return undefined;
     }
   } catch (error) {
     console.error("Error in getErcPermitOrAllowance:", error);
