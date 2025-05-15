@@ -70,6 +70,9 @@ export async function getQuote(params: BridgeParams): Promise<QuoteResult> {
   const quote = quotes[0];
   const estimatedFee = calculateEstimatedFee(amount);
 
+  console.log("quote", JSON.stringify(quote, null, 2));
+  console.log("estimatedFee", estimatedFee);
+
   return {
     quote,
     details: {

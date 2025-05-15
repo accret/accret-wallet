@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import {
   StyleSheet,
   Text,
@@ -113,6 +113,7 @@ export default function SwapScreen() {
   const [isLoadingTokens, setIsLoadingTokens] = useState(false);
   const [isSwapping, setIsSwapping] = useState(false);
   const [quoteResult, setQuoteResult] = useState<QuoteResult | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   // Search state - separate states for from and to tokens
   const [fromSearchQuery, setFromSearchQuery] = useState("");
@@ -122,6 +123,28 @@ export default function SwapScreen() {
 
   // Get account for addresses
   const [account, setAccount] = useState<any>(null);
+
+  // Debounced route fetching
+  const [debouncedAmount, setDebouncedAmount] = useState(amount);
+
+  // Add loading state for quote
+  const [isLoadingQuote, setIsLoadingQuote] = useState(false);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedAmount(amount);
+    }, 800);
+
+    return () => clearTimeout(timer);
+  }, [amount]);
+
+  useEffect(() => {
+    if (parseFloat(debouncedAmount) > 0) {
+      fetchRoutes();
+    } else {
+      setQuoteResult(null);
+    }
+  }, [debouncedAmount]);
 
   // Load user account
   useEffect(() => {
@@ -246,6 +269,8 @@ export default function SwapScreen() {
     }
 
     try {
+      setError(null); // Clear any previous errors
+      setIsLoadingQuote(true); // Set loading state
       // Get the destination address based on selected chain type
       let destAddr = "";
       if (toChain.id.startsWith("solana")) {
@@ -255,7 +280,7 @@ export default function SwapScreen() {
       }
 
       if (!destAddr) {
-        Alert.alert("Error", `No ${toChain.name} account found`);
+        setError(`No ${toChain.name} account found`);
         return;
       }
 
@@ -273,21 +298,32 @@ export default function SwapScreen() {
       // Get quote
       const quote = await getQuote(params);
       setQuoteResult(quote);
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error fetching routes:", error);
-      Alert.alert("Error", "Failed to fetch swap routes");
+      // Handle specific error cases
+      if (error.code === "AMOUNT_TOO_SMALL" && error.data?.minAmountIn) {
+        setError(
+          `Amount too small. Minimum amount required: ${error.data.minAmountIn} ${fromToken?.symbol}`,
+        );
+      } else {
+        setError(error.message || "Failed to fetch swap routes");
+      }
+      setQuoteResult(null);
+    } finally {
+      setIsLoadingQuote(false); // Clear loading state
     }
   };
 
   // Execute the swap
   const executeSwap = async () => {
     if (!quoteResult || !account) {
-      Alert.alert("Error", "Missing quote or account information");
+      setError("Missing quote or account information");
       return;
     }
 
     try {
       setIsSwapping(true);
+      setError(null); // Clear any previous errors
 
       // Get the destination address based on selected chain type
       let destAddr = "";
@@ -314,13 +350,23 @@ export default function SwapScreen() {
               // Reset the form
               setAmount("");
               setQuoteResult(null);
+              setError(null);
             },
           },
         ],
       );
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error executing swap:", error);
-      Alert.alert("Error", "Failed to execute swap transaction");
+      if (
+        error.message?.includes("Transaction") &&
+        error.message?.includes("reverted")
+      ) {
+        setError(
+          "Transaction failed. Please try again with a different amount or token pair.",
+        );
+      } else {
+        setError(error.message || "Failed to execute swap transaction");
+      }
     } finally {
       setIsSwapping(false);
     }
@@ -622,11 +668,6 @@ export default function SwapScreen() {
             value={amount}
             onChangeText={(text) => {
               setAmount(text);
-              if (parseFloat(text) > 0) {
-                fetchRoutes();
-              } else {
-                setQuoteResult(null);
-              }
             }}
           />
           {fromToken?.balance && (
@@ -642,6 +683,80 @@ export default function SwapScreen() {
             </TouchableOpacity>
           )}
         </View>
+
+        {/* Quote Display */}
+        {(quoteResult || isLoadingQuote) && (
+          <View
+            style={[styles.quoteContainer, { backgroundColor: colors.card }]}>
+            {isLoadingQuote ? (
+              <View style={styles.quoteLoadingContainer}>
+                <ActivityIndicator size="small" color={colors.primary} />
+                <Text
+                  style={[
+                    styles.quoteLoadingText,
+                    { color: colors.secondaryText },
+                  ]}>
+                  Fetching best quote...
+                </Text>
+              </View>
+            ) : (
+              <>
+                <View style={styles.quoteRow}>
+                  <Text
+                    style={[
+                      styles.quoteLabel,
+                      { color: colors.secondaryText },
+                    ]}>
+                    You'll receive at least
+                  </Text>
+                  <Text style={[styles.quoteValue, { color: colors.text }]}>
+                    {quoteResult?.details.minAmountOut}{" "}
+                    {quoteResult?.details.toTokenName}
+                  </Text>
+                </View>
+                <View style={styles.quoteRow}>
+                  <Text
+                    style={[
+                      styles.quoteLabel,
+                      { color: colors.secondaryText },
+                    ]}>
+                    Estimated fee
+                  </Text>
+                  <Text style={[styles.quoteValue, { color: colors.text }]}>
+                    ${quoteResult?.details.estimatedFee}
+                  </Text>
+                </View>
+                <View style={styles.quoteRow}>
+                  <Text
+                    style={[
+                      styles.quoteLabel,
+                      { color: colors.secondaryText },
+                    ]}>
+                    Route
+                  </Text>
+                  <Text style={[styles.quoteValue, { color: colors.text }]}>
+                    {quoteResult?.details.fromChain} →{" "}
+                    {quoteResult?.details.toChain}
+                  </Text>
+                </View>
+              </>
+            )}
+          </View>
+        )}
+
+        {/* Error Display */}
+        {error && (
+          <View
+            style={[
+              styles.errorContainer,
+              { backgroundColor: colors.error + "15" }, // 15 is hex for 8% opacity
+            ]}>
+            <Ionicons name="alert-circle" size={20} color={colors.error} />
+            <Text style={[styles.errorText, { color: colors.error }]}>
+              {error}
+            </Text>
+          </View>
+        )}
 
         {/* Swap Button */}
         <TouchableOpacity
@@ -1388,5 +1503,47 @@ const styles = StyleSheet.create({
   clearSearchButtonText: {
     fontSize: 14,
     fontWeight: "600",
+  },
+  errorContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    padding: 12,
+    borderRadius: 12,
+    marginTop: 16,
+  },
+  errorText: {
+    marginLeft: 8,
+    flex: 1,
+    fontSize: 14,
+    fontWeight: "500",
+  },
+  quoteContainer: {
+    borderRadius: 16,
+    padding: 16,
+    marginTop: 16,
+  },
+  quoteRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 12,
+  },
+  quoteLabel: {
+    fontSize: 14,
+  },
+  quoteValue: {
+    fontSize: 14,
+    fontWeight: "500",
+  },
+  quoteLoadingContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 16,
+  },
+  quoteLoadingText: {
+    marginLeft: 12,
+    fontSize: 14,
+    fontWeight: "500",
   },
 });
