@@ -33,6 +33,10 @@ import {
 } from "@/lib/tx/mayan-bridge";
 import { ChainName } from "@mayanfinance/swap-sdk";
 import { getCurrentAccount } from "@/lib/accountStorage";
+import { getExplorerUrl } from "@/lib/tx/explorerUrl";
+import * as Clipboard from "expo-clipboard";
+import { Linking } from "react-native";
+import { useRouter } from "expo-router";
 
 // Chain definitions
 const CHAINS = [
@@ -90,6 +94,7 @@ interface Token {
 
 export default function SwapScreen() {
   const { colors, theme } = useTheme();
+  const router = useRouter();
 
   // State for chain and token selection
   const [fromChain, setFromChain] = useState(CHAINS[0]);
@@ -129,6 +134,10 @@ export default function SwapScreen() {
 
   // Add loading state for quote
   const [isLoadingQuote, setIsLoadingQuote] = useState(false);
+
+  const [showConfirmationModal, setShowConfirmationModal] = useState(false);
+  const [transactionHash, setTransactionHash] = useState<string | null>(null);
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -314,6 +323,15 @@ export default function SwapScreen() {
     }
   };
 
+  // Show confirmation modal
+  const handleSwapClick = () => {
+    if (!quoteResult || !account) {
+      setError("Missing quote or account information");
+      return;
+    }
+    setShowConfirmationModal(true);
+  };
+
   // Execute the swap
   const executeSwap = async () => {
     if (!quoteResult || !account) {
@@ -323,7 +341,8 @@ export default function SwapScreen() {
 
     try {
       setIsSwapping(true);
-      setError(null); // Clear any previous errors
+      setError(null);
+      setShowConfirmationModal(false);
 
       // Get the destination address based on selected chain type
       let destAddr = "";
@@ -339,22 +358,14 @@ export default function SwapScreen() {
         destAddr,
       );
 
-      // Show success message
-      Alert.alert(
-        "Transaction Submitted",
-        `Your swap has been submitted.\n\nTransaction Hash: ${txHash.substring(0, 10)}...${txHash.substring(txHash.length - 6)}`,
-        [
-          {
-            text: "OK",
-            onPress: () => {
-              // Reset the form
-              setAmount("");
-              setQuoteResult(null);
-              setError(null);
-            },
-          },
-        ],
-      );
+      // Set transaction hash and show success modal
+      setTransactionHash(txHash);
+      setShowSuccessModal(true);
+
+      // Reset form state
+      setAmount("");
+      setQuoteResult(null);
+      setError(null);
     } catch (error: any) {
       console.error("Error executing swap:", error);
       if (
@@ -369,6 +380,24 @@ export default function SwapScreen() {
       }
     } finally {
       setIsSwapping(false);
+    }
+  };
+
+  // Copy transaction hash to clipboard
+  const copyTransactionHash = async () => {
+    if (transactionHash) {
+      await Clipboard.setStringAsync(transactionHash);
+      Alert.alert("Copied", "Transaction hash copied to clipboard");
+    }
+  };
+
+  // Open transaction in explorer
+  const openTransactionInExplorer = async () => {
+    if (!transactionHash || !fromChain) return;
+
+    const url = getExplorerUrl(fromChain.id as any, transactionHash);
+    if (url) {
+      await Linking.openURL(url);
     }
   };
 
@@ -782,7 +811,7 @@ export default function SwapScreen() {
               quoteResult
             ) || isSwapping
           }
-          onPress={executeSwap}>
+          onPress={handleSwapClick}>
           {isSwapping ? (
             <ActivityIndicator color="white" size="small" />
           ) : (
@@ -1196,6 +1225,338 @@ export default function SwapScreen() {
           </View>
         </View>
       </Modal>
+
+      {/* Confirmation Modal */}
+      <Modal
+        visible={showConfirmationModal}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowConfirmationModal(false)}>
+        <View style={styles.bottomSheetOverlay}>
+          <View
+            style={[
+              styles.bottomSheetContainer,
+              {
+                backgroundColor:
+                  theme === "dark" ? "#1E1E1E" : colors.background,
+              },
+            ]}>
+            <View style={styles.bottomSheetHandle}>
+              <View
+                style={[
+                  styles.bottomSheetIndicator,
+                  { backgroundColor: colors.border },
+                ]}
+              />
+            </View>
+
+            <View style={styles.bottomSheetHeader}>
+              <Text style={[styles.bottomSheetTitle, { color: colors.text }]}>
+                Confirm Swap
+              </Text>
+              <TouchableOpacity
+                style={styles.bottomSheetCloseButton}
+                onPress={() => setShowConfirmationModal(false)}>
+                <Ionicons name="close" size={24} color={colors.text} />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={styles.confirmationContent}>
+              {/* From Token */}
+              <View
+                style={[
+                  styles.confirmationCard,
+                  { backgroundColor: colors.card },
+                ]}>
+                <Text
+                  style={[
+                    styles.confirmationLabel,
+                    { color: colors.secondaryText },
+                  ]}>
+                  You Pay
+                </Text>
+                <View style={styles.confirmationTokenContainer}>
+                  <View style={styles.confirmationTokenInfo}>
+                    {fromToken?.logoURI ? (
+                      <Image
+                        source={{ uri: fromToken.logoURI }}
+                        style={styles.confirmationTokenIcon}
+                      />
+                    ) : (
+                      <TokenPlaceholderIcon
+                        width={32}
+                        height={32}
+                        symbol={fromToken?.symbol || ""}
+                      />
+                    )}
+                    <View style={styles.confirmationTokenDetails}>
+                      <Text
+                        style={[
+                          styles.confirmationTokenAmount,
+                          { color: colors.text },
+                        ]}>
+                        {amount} {fromToken?.symbol}
+                      </Text>
+                      <Text
+                        style={[
+                          styles.confirmationChainName,
+                          { color: colors.secondaryText },
+                        ]}>
+                        on {fromChain.name}
+                      </Text>
+                    </View>
+                  </View>
+                </View>
+              </View>
+
+              {/* Arrow Icon */}
+              <View style={styles.confirmationArrowContainer}>
+                <View
+                  style={[
+                    styles.confirmationArrowCircle,
+                    { backgroundColor: colors.primaryLight },
+                  ]}>
+                  <Ionicons
+                    name="arrow-down"
+                    size={24}
+                    color={colors.primary}
+                  />
+                </View>
+              </View>
+
+              {/* To Token */}
+              <View
+                style={[
+                  styles.confirmationCard,
+                  { backgroundColor: colors.card },
+                ]}>
+                <Text
+                  style={[
+                    styles.confirmationLabel,
+                    { color: colors.secondaryText },
+                  ]}>
+                  You Receive
+                </Text>
+                <View style={styles.confirmationTokenContainer}>
+                  <View style={styles.confirmationTokenInfo}>
+                    {toToken?.logoURI ? (
+                      <Image
+                        source={{ uri: toToken.logoURI }}
+                        style={styles.confirmationTokenIcon}
+                      />
+                    ) : (
+                      <TokenPlaceholderIcon
+                        width={32}
+                        height={32}
+                        symbol={toToken?.symbol || ""}
+                      />
+                    )}
+                    <View style={styles.confirmationTokenDetails}>
+                      <Text
+                        style={[
+                          styles.confirmationTokenAmount,
+                          { color: colors.text },
+                        ]}>
+                        {quoteResult?.details.minAmountOut} {toToken?.symbol}
+                      </Text>
+                      <Text
+                        style={[
+                          styles.confirmationChainName,
+                          { color: colors.secondaryText },
+                        ]}>
+                        on {toChain.name}
+                      </Text>
+                    </View>
+                  </View>
+                </View>
+              </View>
+
+              {/* Transaction Details */}
+              <View
+                style={[
+                  styles.confirmationDetailsCard,
+                  { backgroundColor: colors.card },
+                ]}>
+                <View style={styles.confirmationDetailRow}>
+                  <Text
+                    style={[
+                      styles.confirmationDetailLabel,
+                      { color: colors.secondaryText },
+                    ]}>
+                    Rate
+                  </Text>
+                  <Text
+                    style={[
+                      styles.confirmationDetailValue,
+                      { color: colors.text },
+                    ]}>
+                    1 {fromToken?.symbol} ≈{" "}
+                    {(
+                      Number(quoteResult?.details.minAmountOut) / Number(amount)
+                    ).toFixed(6)}{" "}
+                    {toToken?.symbol}
+                  </Text>
+                </View>
+
+                <View style={styles.confirmationDetailRow}>
+                  <Text
+                    style={[
+                      styles.confirmationDetailLabel,
+                      { color: colors.secondaryText },
+                    ]}>
+                    Network Fee
+                  </Text>
+                  <Text
+                    style={[
+                      styles.confirmationDetailValue,
+                      { color: colors.text },
+                    ]}>
+                    ${quoteResult?.details.estimatedFee}
+                  </Text>
+                </View>
+
+                <View style={styles.confirmationDetailRow}>
+                  <Text
+                    style={[
+                      styles.confirmationDetailLabel,
+                      { color: colors.secondaryText },
+                    ]}>
+                    Route
+                  </Text>
+                  <Text
+                    style={[
+                      styles.confirmationDetailValue,
+                      { color: colors.text },
+                    ]}>
+                    {quoteResult?.details.fromChain} →{" "}
+                    {quoteResult?.details.toChain}
+                  </Text>
+                </View>
+              </View>
+            </ScrollView>
+
+            <View style={styles.confirmationActions}>
+              <TouchableOpacity
+                style={[
+                  styles.confirmationCancelButton,
+                  { backgroundColor: colors.card },
+                ]}
+                onPress={() => setShowConfirmationModal(false)}>
+                <Text
+                  style={[
+                    styles.confirmationCancelButtonText,
+                    { color: colors.text },
+                  ]}>
+                  Cancel
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[
+                  styles.confirmationConfirmButton,
+                  { backgroundColor: colors.primary },
+                ]}
+                onPress={executeSwap}>
+                <Text style={styles.confirmationConfirmButtonText}>
+                  Confirm Swap
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Success Modal */}
+      <Modal
+        visible={showSuccessModal}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowSuccessModal(false)}>
+        <View style={styles.bottomSheetOverlay}>
+          <View
+            style={[
+              styles.bottomSheetContainer,
+              {
+                backgroundColor:
+                  theme === "dark" ? "#1E1E1E" : colors.background,
+              },
+            ]}>
+            <View style={styles.successContent}>
+              {/* Success Animation */}
+              <View style={styles.successIconContainer}>
+                <View
+                  style={[
+                    styles.successIconCircle,
+                    { backgroundColor: colors.primary + "20" },
+                  ]}>
+                  <Ionicons name="checkmark" size={48} color={colors.primary} />
+                </View>
+              </View>
+
+              <Text style={[styles.successTitle, { color: colors.text }]}>
+                Swap Successful!
+              </Text>
+
+              <Text
+                style={[
+                  styles.successDescription,
+                  { color: colors.secondaryText },
+                ]}>
+                Your swap has been successfully executed
+              </Text>
+
+              {/* Transaction Hash Card */}
+              <TouchableOpacity
+                style={[styles.hashCard, { backgroundColor: colors.card }]}
+                onPress={copyTransactionHash}>
+                <Text
+                  style={[styles.hashLabel, { color: colors.secondaryText }]}>
+                  Transaction Hash
+                </Text>
+                <View style={styles.hashContainer}>
+                  <Text
+                    style={[styles.hashText, { color: colors.text }]}
+                    numberOfLines={1}>
+                    {transactionHash}
+                  </Text>
+                  <Ionicons
+                    name="copy-outline"
+                    size={20}
+                    color={colors.primary}
+                  />
+                </View>
+              </TouchableOpacity>
+
+              {/* Action Buttons */}
+              <View style={styles.successActions}>
+                <TouchableOpacity
+                  style={[
+                    styles.explorerButton,
+                    { backgroundColor: colors.card },
+                  ]}
+                  onPress={openTransactionInExplorer}>
+                  <Text
+                    style={[styles.explorerButtonText, { color: colors.text }]}>
+                    View in Explorer
+                  </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[
+                    styles.doneButton,
+                    { backgroundColor: colors.primary },
+                  ]}
+                  onPress={() => {
+                    setShowSuccessModal(false);
+                    router.back();
+                  }}>
+                  <Text style={styles.doneButtonText}>Back to Home</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -1545,5 +1906,174 @@ const styles = StyleSheet.create({
     marginLeft: 12,
     fontSize: 14,
     fontWeight: "500",
+  },
+  // Confirmation Modal Styles
+  confirmationContent: {
+    padding: 16,
+  },
+  confirmationCard: {
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 8,
+  },
+  confirmationLabel: {
+    fontSize: 14,
+    marginBottom: 8,
+  },
+  confirmationTokenContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  confirmationTokenInfo: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  confirmationTokenIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    marginRight: 12,
+  },
+  confirmationTokenDetails: {
+    flex: 1,
+  },
+  confirmationTokenAmount: {
+    fontSize: 18,
+    fontWeight: "600",
+  },
+  confirmationChainName: {
+    fontSize: 14,
+  },
+  confirmationArrowContainer: {
+    alignItems: "center",
+    marginVertical: 8,
+  },
+  confirmationArrowCircle: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  confirmationDetailsCard: {
+    borderRadius: 16,
+    padding: 16,
+    marginTop: 16,
+  },
+  confirmationDetailRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 12,
+  },
+  confirmationDetailLabel: {
+    fontSize: 14,
+  },
+  confirmationDetailValue: {
+    fontSize: 14,
+    fontWeight: "500",
+  },
+  confirmationActions: {
+    flexDirection: "row",
+    padding: 16,
+    gap: 12,
+  },
+  confirmationCancelButton: {
+    flex: 1,
+    height: 56,
+    borderRadius: 28,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  confirmationCancelButtonText: {
+    fontSize: 16,
+    fontWeight: "600",
+  },
+  confirmationConfirmButton: {
+    flex: 1,
+    height: 56,
+    borderRadius: 28,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  confirmationConfirmButtonText: {
+    color: "white",
+    fontSize: 16,
+    fontWeight: "600",
+  },
+  // Success Modal Styles
+  successContent: {
+    padding: 24,
+    alignItems: "center",
+  },
+  successIconContainer: {
+    marginBottom: 24,
+  },
+  successIconCircle: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  successTitle: {
+    fontSize: 24,
+    fontWeight: "700",
+    marginBottom: 8,
+  },
+  successDescription: {
+    fontSize: 16,
+    textAlign: "center",
+    marginBottom: 24,
+  },
+  hashCard: {
+    width: "100%",
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 24,
+  },
+  hashLabel: {
+    fontSize: 14,
+    marginBottom: 8,
+  },
+  hashContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  hashText: {
+    fontSize: 14,
+    fontWeight: "500",
+    flex: 1,
+    marginRight: 12,
+  },
+  successActions: {
+    width: "100%",
+    flexDirection: "row",
+    gap: 12,
+  },
+  explorerButton: {
+    flex: 1,
+    height: 56,
+    borderRadius: 28,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  explorerButtonText: {
+    fontSize: 16,
+    fontWeight: "600",
+  },
+  doneButton: {
+    flex: 1,
+    height: 56,
+    borderRadius: 28,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  doneButtonText: {
+    color: "white",
+    fontSize: 16,
+    fontWeight: "600",
   },
 });
