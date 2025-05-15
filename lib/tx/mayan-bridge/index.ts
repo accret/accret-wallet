@@ -2,6 +2,7 @@ import { fetchQuote, type ChainName, type Quote } from "@mayanfinance/swap-sdk";
 import { swapSolana } from "./solana";
 import { swapEVM } from "./evm";
 import { formatAmount, calculateEstimatedFee } from "./utils";
+import { fetchSupportedTokens } from "./fetchSupportedTokens";
 
 export interface BridgeParams {
   fromChain: ChainName;
@@ -107,3 +108,5 @@ export async function executeBridgeTransaction(
 export function getExplorerUrl(txHash: string): string {
   return `https://explorer.mayan.finance/swap/${txHash}`;
 }
+
+export { fetchSupportedTokens };

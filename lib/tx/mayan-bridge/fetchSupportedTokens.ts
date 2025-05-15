@@ -30,7 +30,7 @@ export async function fetchSupportedTokens(
 ): Promise<SupportedTokens> {
   try {
     // filter out tokens which name string contains "(Portal from"
-    const filtterEnabled: boolean = false;
+    const filtterEnabled: boolean = true;
 
     let ChainName: string;
 
