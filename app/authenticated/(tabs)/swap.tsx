@@ -85,6 +85,7 @@ interface Token {
   chain: string;
   balance?: string;
   value?: string;
+  wrappedAddress?: string;
 }
 
 // Route interface
@@ -496,7 +497,7 @@ export default function SwapScreen() {
               style={[styles.tokenListAddress, { color: colors.tertiaryText }]}
               numberOfLines={1}
               ellipsizeMode="middle">
-              {item.contract || item.mint}
+              {item.wrappedAddress || item.contract || item.mint}
             </Text>
           )}
         </View>
