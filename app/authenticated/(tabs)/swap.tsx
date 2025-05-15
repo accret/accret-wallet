@@ -88,16 +88,6 @@ interface Token {
   wrappedAddress?: string;
 }
 
-// Route interface
-interface SwapRoute {
-  amount: string;
-  path: string;
-  provider: string;
-  fee: string;
-  estimatedTime: string;
-  isSelected: boolean;
-}
-
 export default function SwapScreen() {
   const { colors, theme } = useTheme();
 
@@ -107,10 +97,8 @@ export default function SwapScreen() {
   const [fromToken, setFromToken] = useState<Token | null>(null);
   const [toToken, setToToken] = useState<Token | null>(null);
 
-  // State for token amounts and available routes
+  // State for token amounts
   const [amount, setAmount] = useState("");
-  const [routes, setRoutes] = useState<SwapRoute[]>([]);
-  const [selectedRoute, setSelectedRoute] = useState<SwapRoute | null>(null);
 
   // State for modals
   const [showFromChainModal, setShowFromChainModal] = useState(false);
@@ -123,7 +111,6 @@ export default function SwapScreen() {
     Record<string, Token[]>
   >({});
   const [isLoadingTokens, setIsLoadingTokens] = useState(false);
-  const [isLoadingRoutes, setIsLoadingRoutes] = useState(false);
   const [isSwapping, setIsSwapping] = useState(false);
   const [quoteResult, setQuoteResult] = useState<QuoteResult | null>(null);
 
@@ -255,13 +242,10 @@ export default function SwapScreen() {
   // Fetch available routes
   const fetchRoutes = async () => {
     if (!fromToken || !toToken || !amount || parseFloat(amount) <= 0) {
-      setRoutes([]);
       return;
     }
 
     try {
-      setIsLoadingRoutes(true);
-
       // Get the destination address based on selected chain type
       let destAddr = "";
       if (toChain.id.startsWith("solana")) {
@@ -289,34 +273,9 @@ export default function SwapScreen() {
       // Get quote
       const quote = await getQuote(params);
       setQuoteResult(quote);
-
-      // Create routes from quote
-      const newRoutes: SwapRoute[] = [
-        {
-          amount: quote.details.minAmountOut,
-          path: `via Mayan Swift`,
-          provider: "Mayan Swift",
-          fee: quote.details.estimatedFee,
-          estimatedTime: "~10 sec",
-          isSelected: true,
-        },
-        {
-          amount: (parseFloat(quote.details.minAmountOut) * 0.95).toFixed(6),
-          path: `via Mayan MCTP`,
-          provider: "Mayan MCTP",
-          fee: (parseFloat(quote.details.estimatedFee) * 0.8).toFixed(4),
-          estimatedTime: "~60 sec",
-          isSelected: false,
-        },
-      ];
-
-      setRoutes(newRoutes);
-      setSelectedRoute(newRoutes[0]);
     } catch (error) {
       console.error("Error fetching routes:", error);
       Alert.alert("Error", "Failed to fetch swap routes");
-    } finally {
-      setIsLoadingRoutes(false);
     }
   };
 
@@ -354,8 +313,6 @@ export default function SwapScreen() {
             onPress: () => {
               // Reset the form
               setAmount("");
-              setRoutes([]);
-              setSelectedRoute(null);
               setQuoteResult(null);
             },
           },
@@ -382,8 +339,6 @@ export default function SwapScreen() {
     setToToken(tempToken);
 
     // Clear routes as they're no longer valid
-    setRoutes([]);
-    setSelectedRoute(null);
     setQuoteResult(null);
   };
 
@@ -396,25 +351,11 @@ export default function SwapScreen() {
     setTimeout(() => fetchRoutes(), 100);
   };
 
-  // Select a route
-  const handleSelectRoute = (route: SwapRoute) => {
-    Haptics.selectionAsync();
-    setRoutes(
-      routes.map((r) => ({
-        ...r,
-        isSelected: r.path === route.path,
-      })),
-    );
-    setSelectedRoute(route);
-  };
-
   // Handle token selection
   const handleSelectFromToken = (token: Token) => {
     setFromToken(token);
     setShowFromTokenModal(false);
     setFromSearchQuery("");
-    setRoutes([]);
-    setSelectedRoute(null);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
   };
 
@@ -422,8 +363,6 @@ export default function SwapScreen() {
     setToToken(token);
     setShowToTokenModal(false);
     setToSearchQuery("");
-    setRoutes([]);
-    setSelectedRoute(null);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
   };
 
@@ -686,8 +625,7 @@ export default function SwapScreen() {
               if (parseFloat(text) > 0) {
                 fetchRoutes();
               } else {
-                setRoutes([]);
-                setSelectedRoute(null);
+                setQuoteResult(null);
               }
             }}
           />
@@ -705,102 +643,6 @@ export default function SwapScreen() {
           )}
         </View>
 
-        {isLoadingRoutes && (
-          <View style={styles.loadingContainer}>
-            <ActivityIndicator size="small" color={colors.primary} />
-            <Text style={[styles.loadingText, { color: colors.secondaryText }]}>
-              Finding the best routes...
-            </Text>
-          </View>
-        )}
-
-        {/* Routes Section */}
-        {routes.length > 0 && (
-          <>
-            <Text
-              style={[
-                styles.sectionLabel,
-                { color: colors.secondaryText, marginTop: 24 },
-              ]}>
-              Routes
-            </Text>
-            {routes.map((route, index) => (
-              <TouchableOpacity
-                key={index}
-                style={[
-                  styles.routeCard,
-                  {
-                    backgroundColor: colors.card,
-                    borderColor: route.isSelected
-                      ? colors.primary
-                      : "transparent",
-                    borderWidth: route.isSelected ? 1 : 0,
-                  },
-                ]}
-                onPress={() => handleSelectRoute(route)}>
-                <View style={styles.routeHeader}>
-                  <View style={styles.routeHeaderLeft}>
-                    <View style={styles.routeTokenIcon}>
-                      {renderChainIcon(toChain.id, 32)}
-                    </View>
-                    <View>
-                      <Text
-                        style={[styles.routeAmount, { color: colors.text }]}>
-                        {route.amount} {toToken?.symbol}
-                      </Text>
-                      <Text
-                        style={[
-                          styles.routePath,
-                          { color: colors.secondaryText },
-                        ]}>
-                        {route.path}
-                      </Text>
-                    </View>
-                  </View>
-                  <View style={styles.routeBadge}>
-                    {index === 0 && (
-                      <View
-                        style={[
-                          styles.fastestBadge,
-                          { backgroundColor: colors.primary + "20" },
-                        ]}>
-                        <Ionicons
-                          name="flash"
-                          size={16}
-                          color={colors.primary}
-                        />
-                        <Text
-                          style={[
-                            styles.fastestBadgeText,
-                            { color: colors.primary },
-                          ]}>
-                          Fastest
-                        </Text>
-                      </View>
-                    )}
-                  </View>
-                </View>
-                <View style={styles.routeDetails}>
-                  <Text
-                    style={[
-                      styles.estimatedTime,
-                      { color: colors.secondaryText },
-                    ]}>
-                    Time to {toChain.name}
-                  </Text>
-                  <Text
-                    style={[
-                      styles.timeValue,
-                      { color: index === 0 ? colors.success : colors.text },
-                    ]}>
-                    {route.estimatedTime}
-                  </Text>
-                </View>
-              </TouchableOpacity>
-            ))}
-          </>
-        )}
-
         {/* Swap Button */}
         <TouchableOpacity
           style={[
@@ -811,7 +653,7 @@ export default function SwapScreen() {
                 toToken &&
                 amount &&
                 parseFloat(amount) > 0 &&
-                selectedRoute
+                quoteResult
                   ? colors.primary
                   : colors.disabledButton,
             },
@@ -822,7 +664,7 @@ export default function SwapScreen() {
               toToken &&
               amount &&
               parseFloat(amount) > 0 &&
-              selectedRoute
+              quoteResult
             ) || isSwapping
           }
           onPress={executeSwap}>
@@ -890,8 +732,6 @@ export default function SwapScreen() {
                     setFromChain(chain);
                     setFromToken(null);
                     setShowFromChainModal(false);
-                    setRoutes([]);
-                    setSelectedRoute(null);
                     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                   }}>
                   <View style={styles.networkIconContainer}>
@@ -963,8 +803,6 @@ export default function SwapScreen() {
                     setToChain(chain);
                     setToToken(null);
                     setShowToChainModal(false);
-                    setRoutes([]);
-                    setSelectedRoute(null);
                     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                   }}>
                   <View style={styles.networkIconContainer}>
@@ -1058,7 +896,10 @@ export default function SwapScreen() {
               <View style={styles.loadingTokensContainer}>
                 <ActivityIndicator size="large" color={colors.primary} />
                 <Text
-                  style={[styles.loadingText, { color: colors.secondaryText }]}>
+                  style={[
+                    styles.emptyResultsText,
+                    { color: colors.secondaryText },
+                  ]}>
                   Loading tokens...
                 </Text>
               </View>
@@ -1188,7 +1029,10 @@ export default function SwapScreen() {
               <View style={styles.loadingTokensContainer}>
                 <ActivityIndicator size="large" color={colors.primary} />
                 <Text
-                  style={[styles.loadingText, { color: colors.secondaryText }]}>
+                  style={[
+                    styles.emptyResultsText,
+                    { color: colors.secondaryText },
+                  ]}>
                   Loading tokens...
                 </Text>
               </View>
@@ -1336,68 +1180,6 @@ const styles = StyleSheet.create({
   maxButtonText: {
     fontSize: 12,
     fontWeight: "600",
-  },
-  loadingContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    marginTop: 16,
-  },
-  loadingText: {
-    marginLeft: 8,
-    fontSize: 14,
-  },
-  routeCard: {
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 12,
-  },
-  routeHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "flex-start",
-    marginBottom: 12,
-  },
-  routeHeaderLeft: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  routeTokenIcon: {
-    marginRight: 12,
-  },
-  routeAmount: {
-    fontSize: 18,
-    fontWeight: "600",
-  },
-  routePath: {
-    fontSize: 14,
-  },
-  routeBadge: {
-    alignItems: "flex-end",
-  },
-  fastestBadge: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
-  },
-  fastestBadgeText: {
-    fontSize: 12,
-    fontWeight: "600",
-    marginLeft: 4,
-  },
-  routeDetails: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-  },
-  estimatedTime: {
-    fontSize: 14,
-  },
-  timeValue: {
-    fontSize: 14,
-    fontWeight: "500",
   },
   swapActionButton: {
     height: 56,
