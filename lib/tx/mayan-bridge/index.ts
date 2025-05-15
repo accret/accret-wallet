@@ -35,9 +35,10 @@ export async function getQuote(params: BridgeParams): Promise<QuoteResult> {
 
   const supportedChains = ["solana", "ethereum", "base", "polygon", "arbitrum"];
   const referrerAddress = {
-    solana: "8tH6ptPMfzcupFCRWMy1RLhcz8kQvZPZ9mhYgTPR997B",
-    evm: "0x9e334e0ac5cAFfc090D0F831B623d46Eb596A227",
+    solana: "69izdTrBfvhpuq8LgWifstGbHTZC6DKn1w5wLpdjapfF",
+    evm: "0xD0208Bfe9Ae201Cc2baE4e4b5a74561472A7a910",
   };
+
   if (
     !supportedChains.includes(fromChain) ||
     !supportedChains.includes(toChain)

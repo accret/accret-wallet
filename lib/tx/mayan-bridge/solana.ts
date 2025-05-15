@@ -33,13 +33,18 @@ export async function swapSolana(
     return trx;
   };
 
+  const referrerAddress = {
+    solana: "69izdTrBfvhpuq8LgWifstGbHTZC6DKn1w5wLpdjapfF",
+    evm: "0xD0208Bfe9Ae201Cc2baE4e4b5a74561472A7a910",
+  };
+
   try {
     // Execute the swap
     const swapRes = await swapFromSolana(
       quote,
       wallet.publicKey.toString(),
       destAddr,
-      null,
+      referrerAddress,
       signer,
       connection,
       [],

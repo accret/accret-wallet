@@ -308,7 +308,7 @@ export default function SwapScreen() {
       const quote = await getQuote(params);
       setQuoteResult(quote);
     } catch (error: any) {
-      console.error("Error fetching routes:", error);
+      console.log("Error fetching routes:", error);
       // Handle specific error cases
       if (error.code === "AMOUNT_TOO_SMALL" && error.data?.minAmountIn) {
         setError(
