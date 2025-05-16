@@ -1,41 +1,69 @@
 // File: app/authenticated/dialect-blink/index.tsx
-import React, { useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import { StyleSheet, Text, View, ScrollView } from "react-native";
-import { useLocalSearchParams } from "expo-router";
+import { useLocalSearchParams, router } from "expo-router";
 import { useTheme } from "@/theme";
 import ScreenHeader from "../ScreenHeader";
+import { SVM_Account } from "@/types/accountStorage";
+import { getCurrentAccount } from "@/lib/accountStorage";
+import { BlinkWrapper } from "@/components/BlinksWrapper";
+import { Ionicons } from "@expo/vector-icons";
 
 export default function DialectBlinkScreen() {
   const { colors } = useTheme();
   const params = useLocalSearchParams();
   const actionUrl = params.url as string;
 
+  const url = actionUrl ? decodeURIComponent(actionUrl) : "No URL provided";
+
+  console.log("Dialect Blink View - Decoded URL:", url);
+
+  const [account, setAccount] = useState<SVM_Account>();
+
   useEffect(() => {
-    if (actionUrl) {
-      console.log("Processing Dialect Blink action URL:", actionUrl);
-      // Here you would process the action URL
-      // For example, make an API call to the actionUrl
+    async function init() {
+      const acc = await getCurrentAccount();
+      if (!acc) {
+        console.log("No account found");
+        return;
+      }
+
+      setAccount(acc.svm as SVM_Account);
     }
-  }, [actionUrl]);
+    init();
+  }, []);
+
+  const handleBack = () => {
+    router.replace("/authenticated");
+  };
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
-      <ScreenHeader title="Dialect Blink" />
+      <ScreenHeader
+        title="Dialect Blink"
+        leftAction={{
+          icon: "chevron-back",
+          onPress: handleBack,
+        }}
+      />
       <ScrollView contentContainerStyle={styles.content}>
         {actionUrl ? (
-          <>
-            <Text style={[styles.titleText, { color: colors.text }]}>
-              Solana Action
-            </Text>
-            <View style={[styles.urlCard, { backgroundColor: colors.card }]}>
-              <Text style={[styles.urlText, { color: colors.text }]}>
-                {actionUrl}
-              </Text>
-            </View>
-            <Text style={[styles.infoText, { color: colors.secondaryText }]}>
-              Processing this Solana action...
-            </Text>
-          </>
+          <View style={styles.content}>
+            {account && url !== "No URL provided" ? (
+              <BlinkWrapper url={url} account={account} />
+            ) : (
+              <View style={styles.errorContainer}>
+                <Ionicons
+                  name="alert-circle-outline"
+                  size={48}
+                  color={colors.error}
+                />
+                <Text style={[styles.errorText, { color: colors.text }]}>
+                  No valid Blink URL provided. Please go back and try again.
+                </Text>
+              </View>
+            )}
+          </View>
         ) : (
           <Text style={[styles.errorText, { color: colors.error }]}>
             No action URL provided
@@ -75,5 +103,11 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: "500",
     textAlign: "center",
+  },
+  errorContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 20,
   },
 });

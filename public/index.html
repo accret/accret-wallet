@@ -51,12 +51,12 @@
             <h2 class="text-xl font-semibold text-gray-800 mb-4">Predefined Test Links</h2>
 
             <div class="space-y-3">
-                <a href="accret://authenticated/dialect-blink?url=https://eclipse-blink-donate-example.vercel.app/api/actions/donate"
+                <a href="accret://authenticated/dialect-blink?url=https://www.dialswap.fun/api/actions/donate-sol"
                     class="block w-full bg-accret-blue hover:bg-accret-dark text-white text-center py-3 px-4 rounded-lg font-medium transition-colors">
-                    Open Eclipse Donate Example
+                    Open Dharmin Donate Example
                 </a>
 
-                <a href="accret://authenticated/dialect-blink?url=https://jupiter.dial.to/swap/SOL-JUP?_brf=7d107c73-fed8-4508-84a3-45ccdf563589&_bin=75acf2be-2dcf-40ce-a652-654892fa2146"
+                <a href="accret://authenticated/dialect-blink?url=https://jupiter.dial.to/swap/SOL-JUP%3F_brf=7d107c73-fed8-4508-84a3-45ccdf563589&_bin=75acf2be-2dcf-40ce-a652-654892fa2146"
                     class="block w-full bg-accret-blue hover:bg-accret-dark text-white text-center py-3 px-4 rounded-lg font-medium transition-colors">
                     Open Jupiter Swap
                 </a>
@@ -76,30 +76,13 @@
                         URL</label>
                     <textarea id="dialToUrl"
                         class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-accret-blue focus:border-accret-blue h-24 resize-y"
-                        placeholder="https://dial.to/?action=solana-action:https://example.com/api/...">https://dial.to/?action=solana-action:https://jupiter.dial.to/swap/SOL-JUP?_brf=7d107c73-fed8-4508-84a3-45ccdf563589&_bin=75acf2be-2dcf-40ce-a652-654892fa2146</textarea>
+                        placeholder="https://dial.to/?action=solana-action:https://example.com/api/...">https://dial.to/?action=solana-action:https://jupiter.dial.to/swap/SOL-JUP%3F_brf=7d107c73-fed8-4508-84a3-45ccdf563589%26_bin=75acf2be-2dcf-40ce-a652-654892fa2146</textarea>
                 </div>
 
                 <button onclick="convertAndOpenUrl()"
                     class="w-full bg-accret-blue hover:bg-accret-dark text-white py-3 px-4 rounded-lg font-medium transition-colors">
                     Convert and Open in Wallet
                 </button>
-
-                <div id="convertedUrl" class="text-xs text-gray-600 bg-gray-50 p-2 rounded hidden"></div>
-            </div>
-        </div>
-
-        <!-- Result notification -->
-        <div id="notification"
-            class="fixed bottom-4 left-4 right-4 bg-green-100 border-l-4 border-green-500 text-green-700 p-4 rounded shadow-md transform transition-transform duration-300 translate-y-full">
-            <div class="flex">
-                <div class="py-1">
-                    <svg class="h-6 w-6 text-green-500 mr-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
-                    </svg>
-                </div>
-                <div id="notificationMessage">
-                    URL converted successfully!
-                </div>
             </div>
         </div>
 
@@ -109,95 +92,56 @@
     </div>
 
     <script>
-        function showNotification(message, isSuccess = true) {
-            const notification = document.getElementById('notification');
-            const notificationMessage = document.getElementById('notificationMessage');
+        function convertDialToUrl(dialToUrl) {
+            try {
+                let url;
+                let actionUrl;
 
-            // Set the message
-            notificationMessage.textContent = message;
+                // Check if it's already a direct Jupiter or other URL
+                if (dialToUrl.includes('jupiter.dial.to') || dialToUrl.includes('dialswap.fun')) {
+                    actionUrl = dialToUrl;
+                } else {
+                    // Parse as dial.to URL
+                    url = new URL(dialToUrl);
+                    const action = url.searchParams.get('action');
+                    
+                    if (!action || !action.startsWith('solana-action:')) {
+                        throw new Error('Invalid dial.to URL format');
+                    }
+                    
+                    actionUrl = action.substring('solana-action:'.length);
+                }
 
-            // Set the color based on success/error
-            if (isSuccess) {
-                notification.classList.remove('bg-red-100', 'border-red-500', 'text-red-700');
-                notification.classList.add('bg-green-100', 'border-green-500', 'text-green-700');
-            } else {
-                notification.classList.remove('bg-green-100', 'border-green-500', 'text-green-700');
-                notification.classList.add('bg-red-100', 'border-red-500', 'text-red-700');
+                // Ensure proper encoding of special characters
+                actionUrl = actionUrl.replace(/\?/g, '%3F').replace(/&/g, '%26');
+                return `accret://authenticated/dialect-blink?url=${encodeURIComponent(actionUrl)}`;
+            } catch (error) {
+                throw new Error('Invalid URL format: ' + error.message);
             }
-
-            // Show the notification
-            notification.classList.remove('translate-y-full');
-
-            // Hide after 3 seconds
-            setTimeout(() => {
-                notification.classList.add('translate-y-full');
-            }, 3000);
         }
 
         function convertAndOpenUrl() {
             const dialToUrl = document.getElementById('dialToUrl').value.trim();
-            const convertedUrlElement = document.getElementById('convertedUrl');
-
             try {
-                // Extract the action URL from the dial.to URL
-                const url = new URL(dialToUrl);
-                const action = url.searchParams.get('action');
-
-                if (action && action.startsWith('solana-action:')) {
-                    // Extract the actual action URL
-                    const actionUrl = action.substring('solana-action:'.length);
-
-                    // Create the Accret wallet URL
-                    const accretUrl = `accret://authenticated/dialect-blink?url=${encodeURIComponent(actionUrl)}`;
-
-                    // Display the converted URL
-                    convertedUrlElement.classList.remove('hidden');
-                    convertedUrlElement.textContent = `Converted to: ${accretUrl}`;
-
-                    // Show notification
-                    showNotification('URL converted successfully! Opening wallet...');
-
-                    // Open the URL after a short delay
-                    setTimeout(() => {
-                        window.location.href = accretUrl;
-                    }, 500);
-                } else {
-                    showNotification('The URL does not contain a valid solana-action parameter', false);
-                }
+                const accretUrl = convertDialToUrl(dialToUrl);
+                window.location.href = accretUrl;
             } catch (error) {
-                showNotification('Invalid URL: ' + error.message, false);
+                console.error('Error:', error.message);
             }
         }
 
-        // Parse query parameters if any
+        // Handle URL parameters on page load
         window.addEventListener('DOMContentLoaded', function () {
             const urlParams = new URLSearchParams(window.location.search);
-            const actionParam = urlParams.get('action');
+            const url = urlParams.get('url') || urlParams.get('action');
 
-            if (actionParam && actionParam.startsWith('solana-action:')) {
-                // If this page was loaded with a solana-action parameter,
-                // automatically redirect to the wallet
-                const actionUrl = actionParam.substring('solana-action:'.length);
-                const accretUrl = `accret://authenticated/dialect-blink?url=${encodeURIComponent(actionUrl)}`;
-
-                // Show a message briefly before redirecting
-                document.body.innerHTML = `
-                <div class="fixed inset-0 flex flex-col items-center justify-center p-4 bg-white">
-                    <svg class="animate-spin h-12 w-12 text-accret-blue mb-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                    </svg>
-                    <h2 class="text-2xl font-bold text-gray-800 mb-2">Redirecting to Accret Wallet...</h2>
-                    <p class="text-gray-600 mb-4">The app should open automatically in a moment.</p>
-                    <a href="${accretUrl}" class="bg-accret-blue hover:bg-accret-dark text-white py-3 px-6 rounded-lg font-medium transition-colors">
-                        Open Wallet Manually
-                    </a>
-                </div>`;
-
-                // Redirect after a short delay
-                setTimeout(function () {
+            if (url) {
+                try {
+                    const accretUrl = convertDialToUrl(url);
                     window.location.href = accretUrl;
-                }, 1500);
+                } catch (error) {
+                    console.error('Error:', error.message);
+                }
             }
         });
     </script>
