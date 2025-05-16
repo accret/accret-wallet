@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Accret Wallet Deep Link Tester</title>
+    <!-- Include Tailwind CSS via CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        'accret-blue': '#2E85FE',
+                        'accret-light': '#E6F2FF',
+                        'accret-dark': '#1A75EA'
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+
+<body class="bg-gray-50 min-h-screen">
+    <div class="container mx-auto px-4 py-8 max-w-2xl">
+        <!-- Header -->
+        <header class="text-center mb-6">
+            <h1 class="text-3xl font-bold text-accret-blue mb-2">Accret Wallet Deep Link Tester</h1>
+            <p class="text-gray-600">Test deep linking from web to the Accret wallet app</p>
+        </header>
+
+        <!-- Info card -->
+        <div class="bg-accret-light rounded-xl p-4 mb-6 text-gray-700">
+            <div class="flex items-start">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-accret-blue mt-0.5 mr-2 flex-shrink-0"
+                    fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <p class="text-sm">
+                    This page helps you test deep linking to the Accret wallet. It converts dial.to URLs to the
+                    appropriate format for direct wallet opening. Use this for testing purposes on simulator or physical
+                    devices.
+                </p>
+            </div>
+        </div>
+
+        <!-- Predefined Test Links -->
+        <div class="bg-white rounded-xl shadow-md p-5 mb-6">
+            <h2 class="text-xl font-semibold text-gray-800 mb-4">Predefined Test Links</h2>
+
+            <div class="space-y-3">
+                <a href="accret://authenticated/dialect-blink?url=https://eclipse-blink-donate-example.vercel.app/api/actions/donate"
+                    class="block w-full bg-accret-blue hover:bg-accret-dark text-white text-center py-3 px-4 rounded-lg font-medium transition-colors">
+                    Open Eclipse Donate Example
+                </a>
+
+                <a href="accret://authenticated/dialect-blink?url=https://jupiter.dial.to/swap/SOL-JUP?_brf=7d107c73-fed8-4508-84a3-45ccdf563589&_bin=75acf2be-2dcf-40ce-a652-654892fa2146"
+                    class="block w-full bg-accret-blue hover:bg-accret-dark text-white text-center py-3 px-4 rounded-lg font-medium transition-colors">
+                    Open Jupiter Swap
+                </a>
+            </div>
+
+            <p class="mt-3 text-xs text-gray-500">These buttons use the direct accret:// scheme that should open the
+                wallet immediately.</p>
+        </div>
+
+        <!-- Convert dial.to URL -->
+        <div class="bg-white rounded-xl shadow-md p-5 mb-6">
+            <h2 class="text-xl font-semibold text-gray-800 mb-4">Convert dial.to URL</h2>
+
+            <div class="space-y-3">
+                <div>
+                    <label for="dialToUrl" class="block text-sm font-medium text-gray-700 mb-1">Enter dial.to
+                        URL</label>
+                    <textarea id="dialToUrl"
+                        class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-accret-blue focus:border-accret-blue h-24 resize-y"
+                        placeholder="https://dial.to/?action=solana-action:https://example.com/api/...">https://dial.to/?action=solana-action:https://jupiter.dial.to/swap/SOL-JUP?_brf=7d107c73-fed8-4508-84a3-45ccdf563589&_bin=75acf2be-2dcf-40ce-a652-654892fa2146</textarea>
+                </div>
+
+                <button onclick="convertAndOpenUrl()"
+                    class="w-full bg-accret-blue hover:bg-accret-dark text-white py-3 px-4 rounded-lg font-medium transition-colors">
+                    Convert and Open in Wallet
+                </button>
+
+                <div id="convertedUrl" class="text-xs text-gray-600 bg-gray-50 p-2 rounded hidden"></div>
+            </div>
+        </div>
+
+        <!-- Result notification -->
+        <div id="notification"
+            class="fixed bottom-4 left-4 right-4 bg-green-100 border-l-4 border-green-500 text-green-700 p-4 rounded shadow-md transform transition-transform duration-300 translate-y-full">
+            <div class="flex">
+                <div class="py-1">
+                    <svg class="h-6 w-6 text-green-500 mr-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+                    </svg>
+                </div>
+                <div id="notificationMessage">
+                    URL converted successfully!
+                </div>
+            </div>
+        </div>
+
+        <footer class="text-center text-gray-500 text-xs mt-10">
+            <p>Accret Wallet Deep Link Testing Tool</p>
+        </footer>
+    </div>
+
+    <script>
+        function showNotification(message, isSuccess = true) {
+            const notification = document.getElementById('notification');
+            const notificationMessage = document.getElementById('notificationMessage');
+
+            // Set the message
+            notificationMessage.textContent = message;
+
+            // Set the color based on success/error
+            if (isSuccess) {
+                notification.classList.remove('bg-red-100', 'border-red-500', 'text-red-700');
+                notification.classList.add('bg-green-100', 'border-green-500', 'text-green-700');
+            } else {
+                notification.classList.remove('bg-green-100', 'border-green-500', 'text-green-700');
+                notification.classList.add('bg-red-100', 'border-red-500', 'text-red-700');
+            }
+
+            // Show the notification
+            notification.classList.remove('translate-y-full');
+
+            // Hide after 3 seconds
+            setTimeout(() => {
+                notification.classList.add('translate-y-full');
+            }, 3000);
+        }
+
+        function convertAndOpenUrl() {
+            const dialToUrl = document.getElementById('dialToUrl').value.trim();
+            const convertedUrlElement = document.getElementById('convertedUrl');
+
+            try {
+                // Extract the action URL from the dial.to URL
+                const url = new URL(dialToUrl);
+                const action = url.searchParams.get('action');
+
+                if (action && action.startsWith('solana-action:')) {
+                    // Extract the actual action URL
+                    const actionUrl = action.substring('solana-action:'.length);
+
+                    // Create the Accret wallet URL
+                    const accretUrl = `accret://authenticated/dialect-blink?url=${encodeURIComponent(actionUrl)}`;
+
+                    // Display the converted URL
+                    convertedUrlElement.classList.remove('hidden');
+                    convertedUrlElement.textContent = `Converted to: ${accretUrl}`;
+
+                    // Show notification
+                    showNotification('URL converted successfully! Opening wallet...');
+
+                    // Open the URL after a short delay
+                    setTimeout(() => {
+                        window.location.href = accretUrl;
+                    }, 500);
+                } else {
+                    showNotification('The URL does not contain a valid solana-action parameter', false);
+                }
+            } catch (error) {
+                showNotification('Invalid URL: ' + error.message, false);
+            }
+        }
+
+        // Parse query parameters if any
+        window.addEventListener('DOMContentLoaded', function () {
+            const urlParams = new URLSearchParams(window.location.search);
+            const actionParam = urlParams.get('action');
+
+            if (actionParam && actionParam.startsWith('solana-action:')) {
+                // If this page was loaded with a solana-action parameter,
+                // automatically redirect to the wallet
+                const actionUrl = actionParam.substring('solana-action:'.length);
+                const accretUrl = `accret://authenticated/dialect-blink?url=${encodeURIComponent(actionUrl)}`;
+
+                // Show a message briefly before redirecting
+                document.body.innerHTML = `
+                <div class="fixed inset-0 flex flex-col items-center justify-center p-4 bg-white">
+                    <svg class="animate-spin h-12 w-12 text-accret-blue mb-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    <h2 class="text-2xl font-bold text-gray-800 mb-2">Redirecting to Accret Wallet...</h2>
+                    <p class="text-gray-600 mb-4">The app should open automatically in a moment.</p>
+                    <a href="${accretUrl}" class="bg-accret-blue hover:bg-accret-dark text-white py-3 px-6 rounded-lg font-medium transition-colors">
+                        Open Wallet Manually
+                    </a>
+                </div>`;
+
+                // Redirect after a short delay
+                setTimeout(function () {
+                    window.location.href = accretUrl;
+                }, 1500);
+            }
+        });
+    </script>
+</body>
+
+</html>
