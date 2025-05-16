@@ -45,6 +45,21 @@ export default function ScanScreen() {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
 
     try {
+      // Check for Dialect Blink URLs
+      const dialectBlinkRegex =
+        /^https?:\/\/(dial\.to|dialto\.io|dialectlabs\.io|dialect\.to)/i;
+      if (
+        dialectBlinkRegex.test(data) ||
+        data.includes("action=solana-action")
+      ) {
+        console.log("Detected Dialect Blink URL, navigating...");
+        router.push({
+          pathname: "/authenticated/dialect-blinks",
+          params: { url: encodeURIComponent(data) },
+        });
+        return;
+      }
+
       // If the scanned data contains a valid address
       let detectedAddress = extractAddress(data);
       let detectedChainId = detectChainFromAddress(detectedAddress || data);
@@ -55,7 +70,9 @@ export default function ScanScreen() {
           // Chain mismatch warning
           Alert.alert(
             "Address Type Mismatch",
-            `The scanned address is for ${getChainName(detectedChainId)}, but you're trying to send from ${getChainName(chainId)}.`,
+            `The scanned address is for ${getChainName(
+              detectedChainId,
+            )}, but you're trying to send from ${getChainName(chainId)}.`,
             [
               {
                 text: "Cancel",
@@ -96,7 +113,9 @@ export default function ScanScreen() {
         // Ask if they want to use the scanned text as an address
         Alert.alert(
           "Use as Address?",
-          `The scanned text doesn't look like a valid address. Do you want to use it as a ${getChainName(chainId)} address?`,
+          `The scanned text doesn't look like a valid address. Do you want to use it as a ${getChainName(
+            chainId,
+          )} address?`,
           [
             {
               text: "Cancel",
