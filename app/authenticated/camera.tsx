@@ -54,7 +54,7 @@ export default function ScanScreen() {
       ) {
         console.log("Detected Dialect Blink URL, navigating...");
         router.push({
-          pathname: "/authenticated/dialect-blinks",
+          pathname: "/authenticated/dialect-blink",
           params: { url: encodeURIComponent(data) },
         });
         return;
