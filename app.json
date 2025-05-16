@@ -11,7 +11,9 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.codeparth.accret",
-      "associatedDomains": ["applinks:dial.to"]
+      "associatedDomains": [
+        "applinks:dial.to"
+      ]
     },
     "android": {
       "adaptiveIcon": {
@@ -30,7 +32,10 @@
               "pathPrefix": "/"
             }
           ],
-          "category": ["BROWSABLE", "DEFAULT"]
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ]
         }
       ]
     },
@@ -60,8 +65,9 @@
         "origin": false
       },
       "eas": {
-        "projectId": "0894ad8f-d9be-4b43-96ce-7a6668d7f938"
+        "projectId": "b476c4fe-32fe-47d3-a5f4-437729cac923"
       }
-    }
+    },
+    "owner": "accret"
   }
 }
