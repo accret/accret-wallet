@@ -1,5 +1,5 @@
-import React from "react";
-import { useEffect } from "react";
+// Modify: app/authenticated/_layout.tsx
+import React, { useEffect } from "react";
 import { useTheme } from "@/theme";
 import { Stack } from "expo-router";
 import { BackHandler } from "react-native";
@@ -63,6 +63,14 @@ export default function AuthenticatedLayout() {
         />
         <Stack.Screen
           name="send"
+          options={{
+            headerShown: false,
+            gestureEnabled: true,
+          }}
+        />
+        {/* Add the dialect-blink screen */}
+        <Stack.Screen
+          name="dialect-blink"
           options={{
             headerShown: false,
             gestureEnabled: true,
