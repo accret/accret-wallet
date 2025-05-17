@@ -33,34 +33,34 @@ Transact and bridge across chains, perform deep-links integrations — all from 
   <tr>
     <td align="center">
       <a href="https://github.com/user-attachments/assets/16f3f3ba-3ee2-48bf-9c78-92bf0f2c2dee" target="_blank">
-        <img src="https://github.com/user-attachments/assets/16f3f3ba-3ee2-48bf-9c78-92bf0f2c2dee" alt="Snapshot 5 (Now 1st)" width="180" height="360"/>
+        <img src="https://github.com/user-attachments/assets/16f3f3ba-3ee2-48bf-9c78-92bf0f2c2dee" alt="Snapshot 1" width="180" height="360"/>
       </a>
     </td>
     <td align="center">
       <a href="https://github.com/user-attachments/assets/d0d7c437-ea9c-4523-ad45-ed26adb48021" target="_blank">
-        <img src="https://github.com/user-attachments/assets/d0d7c437-ea9c-4523-ad45-ed26adb48021" alt="Snapshot 1 (Now 2nd)" width="180" height="360"/>
+        <img src="https://github.com/user-attachments/assets/d0d7c437-ea9c-4523-ad45-ed26adb48021" alt="Snapshot 2" width="180" height="360"/>
       </a>
     </td>
     <td align="center">
       <a href="https://github.com/user-attachments/assets/8a30a91f-db98-4aa7-8e26-8effce4e59f8" target="_blank">
-        <img src="https://github.com/user-attachments/assets/8a30a91f-db98-4aa7-8e26-8effce4e59f8" alt="Snapshot 2 (Now 3rd)" width="180" height="360"/>
+        <img src="https://github.com/user-attachments/assets/8a30a91f-db98-4aa7-8e26-8effce4e59f8" alt="Snapshot 3" width="180" height="360"/>
       </a>
     </td>
   </tr>
   <tr>
     <td align="center">
       <a href="https://github.com/user-attachments/assets/d5efe900-6b75-4d47-8fe2-0c831b0afbc4" target="_blank">
-        <img src="https://github.com/user-attachments/assets/d5efe900-6b75-4d47-8fe2-0c831b0afbc4" alt="Snapshot 3 (Now 5th)" width="180" height="360"/>
+        <img src="https://github.com/user-attachments/assets/d5efe900-6b75-4d47-8fe2-0c831b0afbc4" alt="Snapshot 4" width="180" height="360"/>
       </a>
     </td>
     <td align="center">
-      <a href="https://github.com/user-attachments/assets/c51a7f58-5975-43b5-8a9e-2aec504a9a06" target="_blank">
-        <img src="https://github.com/user-attachments/assets/c51a7f58-5975-43b5-8a9e-2aec504a9a06" alt="Snapshot 6 (Now 4th)" width="180" height="360"/>
+      <a href="https://github.com/user-attachments/assets/b8c8568a-1aa3-4e42-8feb-16610c6a7fbc" target="_blank">
+        <img src="https://github.com/user-attachments/assets/b8c8568a-1aa3-4e42-8feb-16610c6a7fbc" alt="Snapshot 5" width="180" height="360"/>
       </a>
     </td>
     <td align="center">
       <a href="https://github.com/user-attachments/assets/e6645a07-f6e5-451e-a84d-2ef51802f4e6" target="_blank">
-        <img src="https://github.com/user-attachments/assets/e6645a07-f6e5-451e-a84d-2ef51802f4e6" alt="Snapshot 4 (Now 6th)" width="180" height="360"/>
+        <img src="https://github.com/user-attachments/assets/e6645a07-f6e5-451e-a84d-2ef51802f4e6" alt="Snapshot 5" width="180" height="360"/>
       </a>
     </td>
   </tr>
