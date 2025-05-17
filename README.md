@@ -1,50 +1,85 @@
-# Welcome to your Expo app 👋
+# Accret
+Accret is a modern, mobile-first wallet offering an intuitive user experience for cross-chain swaps and deep-link integrations, enabling effortless Web3 interactions. With Accret,  Users can bridge assets across major blockchains in a single flow and instantly trigger actions like swaps or approvals directly from links, QR codes, or social platforms.
+Transact and bridge across chains, perform deep-links integrations — all from the ease of your mobile device.
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
 
-## Get started
+# The Setbacks
+- Swapping between chains on mobile is frustrating and unintuitive. Cluttered wallet interfaces and complex flows overwhelm people who are new to web3.
 
-1. Install dependencies
+- A simple transaction takes too many taps on mobile.
 
-   ```bash
-   npm install
-   ```
+- Complex interfaces significantly deter the mainstream adoption of web3.
 
-2. Start the app
 
-   ```bash
-    npx expo start
-   ```
+# How Accret Solves It
+- Single-flow asset bridging across major blockchains.
 
-In the output, you'll find options to open the app in a
+- No clunky UIs or extra steps.
 
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
+- Accret is the only mobile wallet with cross-chain bridging via Wormhole & deep-link support (links, QR codes, social apps).
 
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
+- Trigger actions like swaps or approvals instantly.
 
-## Get a fresh project
 
-When you're ready, run:
+# TeckStack
+- mobile-frontend - `React Native` `expo` `typescript`
+- Backend - `solana-web3 js` `ethers` `mayan-finance-sdk`
 
-```bash
-npm run reset-project
+# Snapshots
+
+<div align="center">
+
+<table>
+  <tr>
+    <td align="center">
+      <a href="https://github.com/user-attachments/assets/d0d7c437-ea9c-4523-ad45-ed26adb48021" target="_blank">
+        <img src="https://github.com/user-attachments/assets/d0d7c437-ea9c-4523-ad45-ed26adb48021" alt="Snapshot 1" width="180" height="360"/>
+      </a>
+    </td>
+    <td style="width: 20px;"></td>
+    <td align="center">
+      <a href="https://github.com/user-attachments/assets/8a30a91f-db98-4aa7-8e26-8effce4e59f8" target="_blank">
+        <img src="https://github.com/user-attachments/assets/8a30a91f-db98-4aa7-8e26-8effce4e59f8" alt="Snapshot 2" width="180" height="360"/>
+      </a>
+    </td>
+    <td style="width: 20px;"></td>
+    <td align="center">
+      <a href="https://github.com/user-attachments/assets/d5efe900-6b75-4d47-8fe2-0c831b0afbc4" target="_blank">
+        <img src="https://github.com/user-attachments/assets/d5efe900-6b75-4d47-8fe2-0c831b0afbc4" alt="Snapshot 3" width="180" height="360"/>
+      </a>
+    </td>
+    <td style="width: 20px;"></td>
+    <td align="center">
+      <a href="https://github.com/user-attachments/assets/e6645a07-f6e5-451e-a84d-2ef51802f4e6" target="_blank">
+        <img src="https://github.com/user-attachments/assets/e6645a07-f6e5-451e-a84d-2ef51802f4e6" alt="Snapshot 4" width="180" height="360"/>
+      </a>
+    </td>
+  </tr>
+</table>
+
+</div>
+
+
+
+# Installation
+1. Install dependencies and run your development server locally
+```
+   yarn 
+   yarn start
 ```
 
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
+# Authors
+- [@Code-Patrh](https://github.com/Code-Parth)
+- [@imsp18](https://github.com/imsp18)
+- [@YatharthPnwr](https://github.com/yatharthpnwr)
+- [@Dharminnagar](https://github.com/dharminnagar)
+- [@npatanvadiya0](https://github.com/npatanvadiya0)
 
-## Learn more
+# Demo
+### [Link to the demo video](https://www.youtube.com/shorts/nmUsFISHpWI)
 
-To learn more about developing your project with Expo, look at the following resources:
 
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
-
-## Join the community
-
-Join our community of developers creating universal apps.
-
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+# Contributers
+<a href="https://github.com/accret/accret-wallet/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=accret/accret-wallet" />
+</a>
