@@ -60,6 +60,23 @@ export default function ScanScreen() {
         return;
       }
 
+      // If the scanned data contains a deeplink, navigate to the deeplink
+      // Match deeplinks like: accret://authenticated/dialect-blink?url=...
+      const deeplinkRegex =
+        /^accret:\/\/authenticated\/dialect-blink\?url=(.+)$/;
+      const deeplinkMatch = data.match(deeplinkRegex);
+
+      if (deeplinkMatch) {
+        const urlParam = deeplinkMatch[1];
+        const decodedUrl = decodeURIComponent(urlParam);
+        console.log("Deeplink detected:", decodedUrl);
+        router.push({
+          pathname: "/authenticated/dialect-blink",
+          params: { url: decodedUrl },
+        });
+        return;
+      }
+
       // If the scanned data contains a valid address
       let detectedAddress = extractAddress(data);
       let detectedChainId = detectChainFromAddress(detectedAddress || data);
