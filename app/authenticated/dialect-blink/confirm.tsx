@@ -39,6 +39,8 @@ export default function DialectBlinkConfirm() {
     const executeTransaction = async () => {
       try {
         setIsLoading(true);
+        console.log("encodedTransaction", encodedTransaction);
+        console.log("network", network);
         const result = await executeEncodedTx(encodedTransaction, network);
         setTransactionHash(result.hash);
         setTransactionStatus(result.status);

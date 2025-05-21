@@ -81,11 +81,13 @@ export const BlinkWrapper: React.FC<BlinkWrapperProps> = ({ url, account }) => {
         console.log("[Blink] Confirming transaction:", _signature);
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         if (_signature) {
+          console.log("txHash: ", txHash);
+          console.log("signature: ", _signature);
+
           router.push({
             pathname: "/authenticated/dialect-blink/confirm",
             params: {
-              encodedTx: txHash,
-              signature: _signature,
+              encodedTx: _signature,
               network: "solana:101",
             },
           });
