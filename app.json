@@ -12,8 +12,12 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.codeparth.accret",
       "associatedDomains": [
+        "applinks:dial.to",
         "applinks:dial.to"
-      ]
+      ],
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
       "adaptiveIcon": {
