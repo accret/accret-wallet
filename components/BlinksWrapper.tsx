@@ -84,7 +84,9 @@ export const BlinkWrapper: React.FC<BlinkWrapperProps> = ({ url, account }) => {
           router.push({
             pathname: "/authenticated/dialect-blink/confirm",
             params: {
-              transactionHash: txHash,
+              encodedTx: txHash,
+              signature: _signature,
+              network: "solana:101",
             },
           });
         }

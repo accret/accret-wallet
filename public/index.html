@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Accret Wallet Deep Link Tester</title>
+    <title>Accret Wallet Transaction</title>
     <!-- Include Tailwind CSS via CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
@@ -22,72 +22,48 @@
     </script>
 </head>
 
-<body class="bg-gray-50 min-h-screen">
-    <div class="container mx-auto px-4 py-8 max-w-2xl">
-        <!-- Header -->
-        <header class="text-center mb-6">
-            <h1 class="text-3xl font-bold text-accret-blue mb-2">Accret Wallet Deep Link Tester</h1>
-            <p class="text-gray-600">Test deep linking from web to the Accret wallet app</p>
-        </header>
+<body class="bg-gray-50 min-h-screen flex items-center justify-center p-4">
+    <div class="max-w-md w-full">
+        <!-- Logo and Title -->
+        <div class="text-center mb-8">
+            <h1 class="text-3xl font-bold text-accret-blue mb-2">Accret Wallet Transaction</h1>
+            <p class="text-gray-600">You're about to execute a transaction in Accret Wallet</p>
+        </div>
 
-        <!-- Info card -->
-        <div class="bg-accret-light rounded-xl p-4 mb-6 text-gray-700">
-            <div class="flex items-start">
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-accret-blue mt-0.5 mr-2 flex-shrink-0"
-                    fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                        d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+        <!-- Transaction Card -->
+        <div class="bg-white rounded-xl shadow-lg p-6 mb-6">
+            <div class="flex items-start space-x-4 mb-6">
+                <div class="rounded-full bg-accret-light p-3">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-accret-blue" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                </div>
+                <div class="flex-1">
+                    <h2 class="text-lg font-semibold text-gray-800 mb-1">Donate SOL</h2>
+                    <p class="text-gray-600 text-sm">You're about to make a donation using Solana. This transaction will open in your Accret Wallet for confirmation.</p>
+                </div>
+            </div>
+
+            <a href="accret://authenticated/dialect-blink?url=https://www.dialswap.fun/api/actions/donate-sol" 
+               class="block w-full bg-accret-blue hover:bg-accret-dark text-white text-center py-4 px-6 rounded-lg font-medium transition-colors duration-200 ease-in-out">
+                Execute Transaction
+            </a>
+        </div>
+
+        <!-- Security Note -->
+        <div class="bg-accret-light rounded-lg p-4">
+            <div class="flex items-start space-x-3">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-accret-blue mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
-                <p class="text-sm">
-                    This page helps you test deep linking to the Accret wallet. It converts dial.to URLs to the
-                    appropriate format for direct wallet opening. Use this for testing purposes on simulator or physical
-                    devices.
+                <p class="text-sm text-gray-600">
+                    You'll be redirected to Accret Wallet where you can review the transaction details before confirming.
                 </p>
             </div>
         </div>
 
-        <!-- Predefined Test Links -->
-        <div class="bg-white rounded-xl shadow-md p-5 mb-6">
-            <h2 class="text-xl font-semibold text-gray-800 mb-4">Predefined Test Links</h2>
-
-            <div class="space-y-3">
-                <a href="accret://authenticated/dialect-blink?url=https://www.dialswap.fun/api/actions/donate-sol"
-                    class="block w-full bg-accret-blue hover:bg-accret-dark text-white text-center py-3 px-4 rounded-lg font-medium transition-colors">
-                    Open Dharmin Donate Example
-                </a>
-
-                <a href="accret://authenticated/dialect-blink?url=https://jupiter.dial.to/swap/SOL-JUP%3F_brf=7d107c73-fed8-4508-84a3-45ccdf563589&_bin=75acf2be-2dcf-40ce-a652-654892fa2146"
-                    class="block w-full bg-accret-blue hover:bg-accret-dark text-white text-center py-3 px-4 rounded-lg font-medium transition-colors">
-                    Open Jupiter Swap
-                </a>
-            </div>
-
-            <p class="mt-3 text-xs text-gray-500">These buttons use the direct accret:// scheme that should open the
-                wallet immediately.</p>
-        </div>
-
-        <!-- Convert dial.to URL -->
-        <div class="bg-white rounded-xl shadow-md p-5 mb-6">
-            <h2 class="text-xl font-semibold text-gray-800 mb-4">Convert dial.to URL</h2>
-
-            <div class="space-y-3">
-                <div>
-                    <label for="dialToUrl" class="block text-sm font-medium text-gray-700 mb-1">Enter dial.to
-                        URL</label>
-                    <textarea id="dialToUrl"
-                        class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-accret-blue focus:border-accret-blue h-24 resize-y"
-                        placeholder="https://dial.to/?action=solana-action:https://example.com/api/...">https://dial.to/?action=solana-action:https://jupiter.dial.to/swap/SOL-JUP%3F_brf=7d107c73-fed8-4508-84a3-45ccdf563589%26_bin=75acf2be-2dcf-40ce-a652-654892fa2146</textarea>
-                </div>
-
-                <button onclick="convertAndOpenUrl()"
-                    class="w-full bg-accret-blue hover:bg-accret-dark text-white py-3 px-4 rounded-lg font-medium transition-colors">
-                    Convert and Open in Wallet
-                </button>
-            </div>
-        </div>
-
-        <footer class="text-center text-gray-500 text-xs mt-10">
-            <p>Accret Wallet Deep Link Testing Tool</p>
+        <footer class="text-center mt-8">
+            <p class="text-sm text-gray-500">Powered by Accret Wallet</p>
         </footer>
     </div>
 
@@ -97,11 +73,9 @@
                 let url;
                 let actionUrl;
 
-                // Check if it's already a direct Jupiter or other URL
                 if (dialToUrl.includes('jupiter.dial.to') || dialToUrl.includes('dialswap.fun')) {
                     actionUrl = dialToUrl;
                 } else {
-                    // Parse as dial.to URL
                     url = new URL(dialToUrl);
                     const action = url.searchParams.get('action');
                     
@@ -112,21 +86,11 @@
                     actionUrl = action.substring('solana-action:'.length);
                 }
 
-                // Ensure proper encoding of special characters
                 actionUrl = actionUrl.replace(/\?/g, '%3F').replace(/&/g, '%26');
                 return `accret://authenticated/dialect-blink?url=${encodeURIComponent(actionUrl)}`;
             } catch (error) {
-                throw new Error('Invalid URL format: ' + error.message);
-            }
-        }
-
-        function convertAndOpenUrl() {
-            const dialToUrl = document.getElementById('dialToUrl').value.trim();
-            try {
-                const accretUrl = convertDialToUrl(dialToUrl);
-                window.location.href = accretUrl;
-            } catch (error) {
                 console.error('Error:', error.message);
+                return null;
             }
         }
 
@@ -138,7 +102,9 @@
             if (url) {
                 try {
                     const accretUrl = convertDialToUrl(url);
-                    window.location.href = accretUrl;
+                    if (accretUrl) {
+                        window.location.href = accretUrl;
+                    }
                 } catch (error) {
                     console.error('Error:', error.message);
                 }

@@ -26,8 +26,9 @@ type ChainId =
 export default function DialectBlinkConfirm() {
   const { colors } = useTheme();
   const params = useLocalSearchParams();
-  const encodedTransaction = (params.encodedTransaction as string) || "";
-  const network = (params.network as ChainId) || "solana:101"; // Default to Solana mainnet
+  const encodedTransaction = (params.encodedTx as string) || "";
+  // const network = (params.network as ChainId) || "solana:101"; // Default to Solana mainnet
+  const network = "solana:101";
 
   const [transactionHash, setTransactionHash] = useState<string>("");
   const [isLoading, setIsLoading] = useState(true);
