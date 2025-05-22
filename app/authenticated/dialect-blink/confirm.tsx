@@ -14,7 +14,7 @@ import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { useTheme } from "@/theme";
 import { getExplorerUrl } from "@/lib/tx/explorerUrl";
-import { executeEncodedTx } from "@/lib/tx";
+import { executeBlinkEncodedTx } from "@/lib/tx";
 
 type ChainId =
   | "solana:101" // Solana Mainnet
@@ -28,7 +28,7 @@ export default function DialectBlinkConfirm() {
   const params = useLocalSearchParams();
   const encodedTransaction = (params.encodedTx as string) || "";
   // const network = (params.network as ChainId) || "solana:101"; // Default to Solana mainnet
-  const network = "solana:101";
+  const network = "solana:101" as ChainId;
 
   const [transactionHash, setTransactionHash] = useState<string>("");
   const [isLoading, setIsLoading] = useState(true);
@@ -40,8 +40,8 @@ export default function DialectBlinkConfirm() {
       try {
         setIsLoading(true);
         console.log("encodedTransaction", encodedTransaction);
-        console.log("network", network);
-        const result = await executeEncodedTx(encodedTransaction, network);
+        const result = await executeBlinkEncodedTx(encodedTransaction);
+        console.log("result", result);
         setTransactionHash(result.hash);
         setTransactionStatus(result.status);
         setError(result.error);
