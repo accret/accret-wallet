@@ -9,13 +9,16 @@ import {
   TouchableOpacity,
   StyleSheet,
   ActivityIndicator,
+  Alert,
 } from "react-native";
 import { getAllAccountsInfo, getCurrentAccountId } from "@/lib/accountStorage";
+import { authenticateWithBiometricsDetailed } from "@/lib/auth/biometricAuth";
 
 export default function Index() {
   const router = useRouter();
   const { colors } = useTheme();
   const [loading, setLoading] = useState(true);
+  const [authenticating, setAuthenticating] = useState(false);
 
   // Define checkExistingWallets with useCallback to avoid dependency issues
   const checkExistingWallets = useCallback(async () => {
@@ -23,13 +26,38 @@ export default function Index() {
       // Get current account ID
       const currentId = await getCurrentAccountId();
 
-      // If there's a current account, navigate to authenticated route
+      // If there's a current account, attempt biometric authentication
       if (currentId) {
-        router.replace("/authenticated");
-        return;
+        const accounts = await getAllAccountsInfo();
+        if (accounts.length > 0) {
+          setLoading(false);
+          setAuthenticating(true);
+
+          // Perform biometric authentication with detailed result
+          const authResult = await authenticateWithBiometricsDetailed("login");
+
+          if (authResult.success) {
+            // Authentication successful, navigate to authenticated route
+            router.replace("/authenticated");
+          } else if (authResult.canceled) {
+            // User canceled the authentication, stay on welcome screen
+            setAuthenticating(false);
+            // No need to show an alert for cancellation
+          } else {
+            // Authentication failed for other reasons
+            setAuthenticating(false);
+            Alert.alert(
+              "Authentication Failed",
+              authResult.error ||
+                "Please try again or use another method to access your wallet.",
+              [{ text: "OK" }],
+            );
+          }
+          return;
+        }
       }
 
-      // Otherwise, check if there are any accounts
+      // Otherwise, check if there are any accounts without requiring authentication
       const accounts = await getAllAccountsInfo();
       if (accounts.length > 0) {
         router.replace("/authenticated");
@@ -76,6 +104,27 @@ export default function Index() {
           { backgroundColor: colors.background, justifyContent: "center" },
         ]}>
         <ActivityIndicator size="large" color={colors.primary} />
+      </View>
+    );
+  }
+
+  // Show loading state while authenticating
+  if (authenticating) {
+    return (
+      <View
+        style={[
+          styles.container,
+          { backgroundColor: colors.background, justifyContent: "center" },
+        ]}>
+        <AccretIcon width={120} height={120} />
+        <Text style={[styles.authText, { color: colors.text, marginTop: 20 }]}>
+          Authenticating...
+        </Text>
+        <ActivityIndicator
+          size="large"
+          color={colors.primary}
+          style={{ marginTop: 20 }}
+        />
       </View>
     );
   }
@@ -169,6 +218,12 @@ const styles = StyleSheet.create({
     marginBottom: 40,
     paddingHorizontal: 10,
   },
+  authText: {
+    fontSize: 18,
+    fontWeight: "600",
+    textAlign: "center",
+    marginTop: 20,
+  },
   buttonsContainer: {
     width: "100%",
     paddingHorizontal: 16,
@@ -198,12 +253,12 @@ const styles = StyleSheet.create({
   footer: {
     width: "100%",
     alignItems: "center",
-    marginBottom: 20,
+    marginTop: 16,
   },
   termsText: {
     fontSize: 14,
-    lineHeight: 20,
     textAlign: "center",
+    lineHeight: 20,
   },
   termsLink: {
     fontWeight: "600",

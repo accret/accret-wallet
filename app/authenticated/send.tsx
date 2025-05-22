@@ -50,6 +50,10 @@ import AddressValidation from "@/components/AddressValidation";
 import CrossChainWarning from "@/components/CrossChainWarning";
 import FeeInfoDisplay from "@/components/FeeInfoDisplay";
 import SuccessAnimation from "@/components/SuccessAnimation";
+import {
+  authenticateWithBiometrics,
+  authenticateWithBiometricsDetailed,
+} from "@/lib/auth/biometricAuth";
 
 // Chain types for the dropdown
 const CHAINS = [
@@ -588,7 +592,12 @@ export default function SendScreen() {
         tokenAddress,
         recipientAddress,
         amount: parseFloat(amount),
-        chainId: selectedChain.id as any,
+        chainId: selectedChain.id as
+          | "solana:101"
+          | "eip155:1"
+          | "eip155:137"
+          | "eip155:8453"
+          | "eip155:42161",
       });
 
       setFeeInfo(fee);
@@ -606,65 +615,69 @@ export default function SendScreen() {
 
   // Execute the transaction
   const executeTransaction = async () => {
-    if (
-      !selectedChain ||
-      !selectedToken ||
-      !recipientAddress ||
-      !amount ||
-      !feeInfo
-    ) {
-      return;
-    }
-
     try {
       setProcessingTransaction(true);
       setError(null);
 
+      // First authenticate using biometrics with detailed result
+      const authResult =
+        await authenticateWithBiometricsDetailed("transaction");
+
+      if (!authResult.success) {
+        if (authResult.canceled) {
+          setError("Transaction cancelled by user.");
+        } else {
+          setError(
+            authResult.error || "Authentication failed. Transaction cancelled.",
+          );
+        }
+        setProcessingTransaction(false);
+        return;
+      }
+
+      // Extract the token address based on token type
       let tokenAddress = "";
 
-      // Get the token address based on type
-      if (selectedToken.type === "ERC20") {
+      if (selectedToken!.type === "ERC20") {
         // For ERC20 tokens, use the contract address
-        const erc20Data = selectedToken.data as any;
+        const erc20Data = selectedToken!.data as any;
         tokenAddress = erc20Data.contractAddress;
-      } else if (selectedToken.type === "SPL") {
+      } else if (selectedToken!.type === "SPL") {
         // For SPL tokens, use the mint address
-        const splData = selectedToken.data as any;
+        const splData = selectedToken!.data as any;
         tokenAddress = splData.mintAddress;
       } else {
         // For native tokens, use the symbol
-        tokenAddress = selectedChain.id === "solana:101" ? "SOL" : "ETH";
+        tokenAddress = selectedChain!.id === "solana:101" ? "SOL" : "ETH";
       }
 
-      // Execute the transfer
+      // Proceed with transaction if authentication was successful
       const result = await executeTokenTransfer({
         tokenAddress,
         recipientAddress,
         amount: parseFloat(amount),
-        chainId: selectedChain.id as any,
+        chainId: selectedChain!.id as
+          | "solana:101"
+          | "eip155:1"
+          | "eip155:137"
+          | "eip155:8453"
+          | "eip155:42161",
       });
 
-      setTransactionResult(result);
-
-      // Provide haptic feedback based on result
       if (result.status) {
-        // Success vibration
+        console.log("Transaction successful:", result);
+        setTransactionResult(result);
+        // Move to result screen
+        setCurrentStep(SendStep.RESULT);
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       } else {
-        // Error vibration
+        console.error("Transaction failed:", result.error);
+        setError(result.error || "Transaction failed. Please try again.");
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       }
-
-      // Move to result step
-      setCurrentStep(SendStep.RESULT);
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error executing transaction:", error);
-      setError(
-        `Transaction failed: ${
-          error instanceof Error ? error.message : String(error)
-        }`,
-      );
-      // Error vibration
+      setError(error.message || "Transaction failed. Please try again.");
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
     } finally {
       setProcessingTransaction(false);

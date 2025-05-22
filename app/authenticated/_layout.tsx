@@ -68,9 +68,15 @@ export default function AuthenticatedLayout() {
             gestureEnabled: true,
           }}
         />
-        {/* Add the dialect-blink screen */}
         <Stack.Screen
-          name="dialect-blink"
+          name="security-settings"
+          options={{
+            headerShown: false,
+            gestureEnabled: true,
+          }}
+        />
+        <Stack.Screen
+          name="dialect-blink/index.tsx"
           options={{
             headerShown: false,
             gestureEnabled: true,

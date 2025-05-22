@@ -32,6 +32,10 @@ export default function SettingsScreen() {
     router.push("/authenticated/account-settings");
   };
 
+  const navigateToSecuritySettings = () => {
+    router.push("/authenticated/security-settings");
+  };
+
   const getWalletInitials = (name: string) => {
     return name
       .split(" ")
@@ -123,6 +127,12 @@ export default function SettingsScreen() {
             title="Account Settings"
             subtitle="Manage your wallets and accounts"
             onPress={navigateToAccountSettings}
+          />
+          <SettingsItem
+            icon="lock-closed-outline"
+            title="Security Settings"
+            subtitle="Configure biometric authentication"
+            onPress={navigateToSecuritySettings}
           />
         </View>
 

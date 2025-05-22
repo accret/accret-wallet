@@ -16,7 +16,8 @@
         "applinks:dial.to"
       ],
       "infoPlist": {
-        "ITSAppUsesNonExemptEncryption": false
+        "ITSAppUsesNonExemptEncryption": false,
+        "NSFaceIDUsageDescription": "Allow Accret Wallet to use Face ID for secure authentication and transaction authorization."
       }
     },
     "android": {
@@ -59,7 +60,13 @@
           "backgroundColor": "#ffffff"
         }
       ],
-      "expo-secure-store"
+      "expo-secure-store",
+      [
+        "expo-local-authentication",
+        {
+          "faceIDPermission": "Allow Accret Wallet to use Face ID for secure authentication and transaction authorization."
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true

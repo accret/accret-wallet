@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect } from "react";
 import {
   StyleSheet,
   Text,
@@ -37,6 +37,7 @@ import { getExplorerUrl } from "@/lib/tx/explorerUrl";
 import * as Clipboard from "expo-clipboard";
 import { Linking } from "react-native";
 import { useRouter } from "expo-router";
+import { authenticateWithBiometricsDetailed } from "@/lib/auth/biometricAuth";
 
 // Chain definitions
 const CHAINS = [
@@ -153,6 +154,7 @@ export default function SwapScreen() {
     } else {
       setQuoteResult(null);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [debouncedAmount]);
 
   // Load user account
@@ -169,12 +171,14 @@ export default function SwapScreen() {
     if (fromChain) {
       loadSupportedTokens(fromChain.id, "from");
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fromChain]);
 
   useEffect(() => {
     if (toChain) {
       loadSupportedTokens(toChain.id, "to");
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [toChain]);
 
   // Filter "from" tokens based on search query
@@ -343,6 +347,22 @@ export default function SwapScreen() {
       setIsSwapping(true);
       setError(null);
       setShowConfirmationModal(false);
+
+      // First authenticate using biometrics
+      const authResult =
+        await authenticateWithBiometricsDetailed("transaction");
+
+      if (!authResult.success) {
+        if (authResult.canceled) {
+          setError("Swap cancelled by user.");
+        } else {
+          setError(
+            authResult.error || "Authentication failed. Swap cancelled.",
+          );
+        }
+        setIsSwapping(false);
+        return;
+      }
 
       // Get the destination address based on selected chain type
       let destAddr = "";
