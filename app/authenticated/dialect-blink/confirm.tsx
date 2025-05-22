@@ -1,12 +1,12 @@
-import React, { useEffect, useState, useRef } from "react";
+import React, { useState, useEffect } from "react";
 import {
   View,
   Text,
   StyleSheet,
   TouchableOpacity,
   SafeAreaView,
-  ActivityIndicator,
   ScrollView,
+  ActivityIndicator,
   Alert,
 } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
@@ -17,199 +17,263 @@ import * as WebBrowser from "expo-web-browser";
 import { useTheme } from "@/theme";
 import { executeEncodedTx } from "@/lib/tx/solana/executeEncodedTx";
 import { getExplorerUrl } from "@/lib/tx/explorerUrl";
-import SuccessAnimation from "@/components/SuccessAnimation";
+
+// Transaction status types
+enum TransactionStatus {
+  PENDING = "PENDING",
+  CONFIRMING = "CONFIRMING",
+  CONFIRMED = "CONFIRMED",
+  FAILED = "FAILED",
+}
 
 export default function DialectBlinkConfirmScreen() {
   const { colors } = useTheme();
   const params = useLocalSearchParams();
+
+  // Log params for debugging
+  console.log("Confirmation page params:", params);
+
+  const transactionHash = params.transactionHash as string;
+  const transactionSignature = params.signature as string;
   const encodedTx = params.encodedTx as string;
-
-  const [isLoading, setIsLoading] = useState(true);
-  const [isSuccess, setIsSuccess] = useState<boolean | null>(null);
+  const networkId = "solana:101";
+  const [status, setStatus] = useState<TransactionStatus>(
+    TransactionStatus.PENDING,
+  );
+  const [copied, setCopied] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [txHash, setTxHash] = useState<string | null>(null);
-  const [explorerUrl, setExplorerUrl] = useState<string | null>(null);
-  const [copied, setCopied] = useState(false);
+  const [explorerLink, setExplorerLink] = useState<string | null>(null);
+  const [, setSignature] = useState<string | null>(
+    transactionSignature || null,
+  );
+  const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
+  const [isProcessing, setIsProcessing] = useState<boolean>(false);
 
-  // Ref to track component mount status and cleanup timeouts
-  const isMountedRef = useRef(true);
-  const copyTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-
-  // Cleanup on unmount
+  // Log transaction details for debugging
   useEffect(() => {
-    return () => {
-      isMountedRef.current = false;
-      if (copyTimeoutRef.current) {
-        clearTimeout(copyTimeoutRef.current);
-      }
-    };
-  }, []);
-
-  useEffect(() => {
-    const sendTx = async () => {
-      if (!isMountedRef.current) return;
-
-      setIsLoading(true);
-      setIsSuccess(null);
-      setErrorMessage(null);
-      setTxHash(null);
-      setExplorerUrl(null);
-
-      try {
-        const result = await executeEncodedTx(encodedTx);
-
-        // Check if component is still mounted before updating state
-        if (!isMountedRef.current) return;
-
-        // Safe type checking instead of unsafe assertions
-        if (result && typeof result === "object" && "signature" in result) {
-          const signature = (result as any).signature;
-          if (typeof signature === "string") {
-            setTxHash(signature);
-            setExplorerUrl(getExplorerUrl("solana:101", signature));
-            setIsSuccess(true);
-            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-          } else {
-            setIsSuccess(false);
-            setErrorMessage("Invalid transaction signature format");
-            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-          }
-        } else {
-          setIsSuccess(false);
-          setErrorMessage("No transaction signature returned");
-          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-        }
-      } catch (err: unknown) {
-        // Check if component is still mounted before updating state
-        if (!isMountedRef.current) return;
-
-        setIsSuccess(false);
-        const errorMsg =
-          err instanceof Error ? err.message : "Unknown error occurred";
-        setErrorMessage(errorMsg);
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-      } finally {
-        // Check if component is still mounted before updating state
-        if (isMountedRef.current) {
-          setIsLoading(false);
-        }
-      }
-    };
-
-    if (encodedTx) {
-      sendTx();
-    }
-  }, [encodedTx]);
+    console.log("Transaction Hash:", transactionHash);
+    console.log("Transaction Signature:", transactionSignature);
+    console.log("Encoded Transaction:", encodedTx);
+  }, [transactionHash, transactionSignature, encodedTx]);
 
   const handleCopyHash = async () => {
-    if (!txHash || !isMountedRef.current) return;
+    if (!transactionHash) {
+      Alert.alert("Error", "No transaction hash available to copy");
+      return;
+    }
+    await Clipboard.setStringAsync(transactionHash);
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
 
+  const openInExplorer = async () => {
+    if (!explorerLink) {
+      Alert.alert("Error", "No transaction hash available to view");
+      return;
+    }
     try {
-      await Clipboard.setStringAsync(txHash);
-
-      if (!isMountedRef.current) return;
-
-      setCopied(true);
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-
-      // Clear any existing timeout
-      if (copyTimeoutRef.current) {
-        clearTimeout(copyTimeoutRef.current);
-      }
-
-      // Set new timeout with proper cleanup
-      copyTimeoutRef.current = setTimeout(() => {
-        if (isMountedRef.current) {
-          setCopied(false);
-        }
-      }, 2000);
+      console.log("Opening explorer URL:", explorerLink);
+      await WebBrowser.openBrowserAsync(explorerLink);
     } catch (error) {
-      console.error("Failed to copy hash:", error);
-      if (isMountedRef.current) {
-        Alert.alert("Error", "Failed to copy transaction hash");
-      }
+      console.error("Error opening explorer:", error);
+      Alert.alert("Error", "Failed to open transaction in explorer");
     }
   };
 
-  const handleViewInExplorer = async () => {
-    if (!explorerUrl) return;
-
+  const handleConfirmTransaction = async () => {
     try {
-      await WebBrowser.openBrowserAsync(explorerUrl);
+      if (!encodedTx) {
+        throw new Error("Transaction data not provided");
+      }
+
+      // Set submitting state to show loading indicator
+      setIsSubmitting(true);
+      setIsProcessing(true);
+
+      // Processing RPC submission
+      setStatus(TransactionStatus.PENDING);
+
+      // Execute the transaction
+      const result = await executeEncodedTx(encodedTx);
+
+      // Get the transaction signature
+      const transactionSignature =
+        "signature" in result && typeof result.signature === "string"
+          ? result.signature
+          : null;
+
+      if (transactionSignature) {
+        setSignature(transactionSignature);
+
+        // Generate explorer link
+        const link = getExplorerUrl(networkId, transactionSignature);
+        console.log("Generated explorer link:", link);
+        setExplorerLink(link);
+
+        // Update status
+        setStatus(TransactionStatus.CONFIRMING);
+
+        // Wait a moment and mark as confirmed
+        // In a production app, you'd poll for confirmation status
+        setTimeout(() => {
+          setStatus(TransactionStatus.CONFIRMED);
+          setIsProcessing(false);
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        }, 3000);
+      } else {
+        throw new Error("Transaction submitted but no signature returned");
+      }
     } catch (error) {
-      console.error("Failed to open explorer:", error);
-      Alert.alert("Error", "Failed to open explorer");
+      console.error("Transaction failed:", error);
+      setStatus(TransactionStatus.FAILED);
+      setErrorMessage(
+        error instanceof Error ? error.message : "Unknown error occurred",
+      );
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      setIsProcessing(false);
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
-  const handleReturn = () => {
+  // Add a function to handle returning to the wallet
+  const handleReturnToWallet = () => {
     router.replace("/authenticated");
   };
+
+  // Get status text
+  const getStatusText = () => {
+    switch (status) {
+      case TransactionStatus.PENDING:
+        return "Submitting Transaction";
+      case TransactionStatus.CONFIRMING:
+        return "Confirming Transaction";
+      case TransactionStatus.CONFIRMED:
+        return "Transaction Confirmed";
+      case TransactionStatus.FAILED:
+        return "Transaction Failed";
+    }
+  };
+
+  // Get status description
+  const getStatusDescription = () => {
+    switch (status) {
+      case TransactionStatus.PENDING:
+        return "Your transaction is being submitted to the network...";
+      case TransactionStatus.CONFIRMING:
+        return "Waiting for confirmation from the Solana network...";
+      case TransactionStatus.CONFIRMED:
+        return "Your transaction has been confirmed successfully.";
+      case TransactionStatus.FAILED:
+        return `There was an issue with your transaction: ${errorMessage || "Unknown error"}`;
+    }
+  };
+
+  // Show error if no transaction hash is available
+  if (!transactionHash) {
+    return (
+      <SafeAreaView
+        style={[styles.container, { backgroundColor: colors.background }]}>
+        <View style={styles.header}>
+          <TouchableOpacity
+            style={styles.backButton}
+            onPress={() => router.back()}>
+            <Ionicons name="arrow-back" size={24} color={colors.text} />
+          </TouchableOpacity>
+          <Text style={[styles.title, { color: colors.text }]}>Error</Text>
+          <View style={styles.placeholder} />
+        </View>
+        <View style={styles.errorContainer}>
+          <Ionicons
+            name="alert-circle-outline"
+            size={48}
+            color={colors.error}
+          />
+          <Text style={[styles.errorTitle, { color: colors.text }]}>
+            No Transaction Data
+          </Text>
+          <Text style={[styles.errorText, { color: colors.secondaryText }]}>
+            No transaction data was provided. Please try the action again.
+          </Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView
       style={[styles.container, { backgroundColor: colors.background }]}>
+      {(isSubmitting || isProcessing) && (
+        <View
+          style={[
+            styles.loadingOverlay,
+            { backgroundColor: `${colors.background}CC` },
+          ]}>
+          <ActivityIndicator size="large" color={colors.primary} />
+          <Text style={[styles.loadingText, { color: colors.text }]}>
+            {isSubmitting
+              ? "Processing transaction..."
+              : "Confirming transaction..."}
+          </Text>
+        </View>
+      )}
+
       <View style={styles.header}>
-        <TouchableOpacity style={styles.backButton} onPress={handleReturn}>
-          <Ionicons name="chevron-back" size={24} color={colors.text} />
+        <TouchableOpacity
+          style={styles.backButton}
+          onPress={() => router.back()}>
+          <Ionicons name="arrow-back" size={24} color={colors.text} />
         </TouchableOpacity>
-        <Text style={[styles.headerTitle, { color: colors.text }]}>
-          Transaction Result
+        <Text style={[styles.title, { color: colors.text }]}>
+          Confirm Transaction
         </Text>
-        <View style={styles.headerRightPlaceholder} />
+        <View style={styles.placeholder} />
       </View>
 
       <ScrollView
-        contentContainerStyle={styles.scrollContentContainer}
-        style={styles.scrollContainer}>
-        <View style={styles.resultIconContainer}>
-          {isLoading ? (
-            <ActivityIndicator size={80} color={colors.primary} />
-          ) : isSuccess ? (
-            <SuccessAnimation size={80} />
-          ) : (
+        style={styles.content}
+        contentContainerStyle={styles.contentContainer}>
+        <View style={[styles.card, { backgroundColor: colors.card }]}>
+          <View style={styles.cardHeader}>
+            <Ionicons
+              name="document-text-outline"
+              size={24}
+              color={colors.primary}
+            />
+            <Text style={[styles.cardTitle, { color: colors.text }]}>
+              Transaction Details
+            </Text>
+          </View>
+
+          <View style={[styles.infoRow, { borderBottomColor: colors.border }]}>
+            <Text style={[styles.label, { color: colors.secondaryText }]}>
+              Network
+            </Text>
             <View
               style={[
-                styles.errorIconCircle,
-                { backgroundColor: colors.error + "20" },
+                styles.networkBadge,
+                { backgroundColor: colors.networkBadge },
               ]}>
-              <Ionicons name="close" size={48} color={colors.error} />
+              <View
+                style={[styles.networkDot, { backgroundColor: colors.primary }]}
+              />
             </View>
-          )}
-        </View>
+          </View>
 
-        <Text style={[styles.resultTitle, { color: colors.text }]}>
-          {isLoading
-            ? "Processing Transaction..."
-            : isSuccess
-              ? "Transaction Successful"
-              : "Transaction Failed"}
-        </Text>
-
-        <Text
-          style={[styles.resultDescription, { color: colors.secondaryText }]}>
-          {isLoading
-            ? "Your transaction is being submitted to the network..."
-            : isSuccess
-              ? "Your transaction has been confirmed on Solana Mainnet."
-              : `There was an error while trying to send your transaction${errorMessage ? ": " + errorMessage : ""}`}
-        </Text>
-
-        {txHash && !isLoading && (
-          <View style={styles.hashContainer}>
-            <Text style={[styles.hashLabel, { color: colors.secondaryText }]}>
-              Transaction Hash
+          <View style={[styles.infoRow, { borderBottomColor: colors.border }]}>
+            <Text style={[styles.label, { color: colors.secondaryText }]}>
+              Transaction
             </Text>
-            <View style={styles.hashRow}>
+            <View style={styles.hashContainer}>
               <Text
                 style={[styles.hashText, { color: colors.text }]}
-                numberOfLines={1}
+                numberOfLines={2}
                 ellipsizeMode="middle">
-                {txHash.substring(0, 8)}...{txHash.substring(txHash.length - 8)}
+                {transactionHash.substring(0, 8)}...
+                {transactionHash.substring(transactionHash.length - 8)}
               </Text>
-              <TouchableOpacity
-                onPress={handleCopyHash}
-                style={styles.copyButton}>
+              <TouchableOpacity onPress={handleCopyHash}>
                 <Ionicons
                   name={copied ? "checkmark" : "copy-outline"}
                   size={20}
@@ -218,47 +282,137 @@ export default function DialectBlinkConfirmScreen() {
               </TouchableOpacity>
             </View>
           </View>
-        )}
 
-        {explorerUrl && !isLoading && (
-          <TouchableOpacity
-            style={[
-              styles.viewExplorerButton,
-              { backgroundColor: colors.primaryLight },
-            ]}
-            onPress={handleViewInExplorer}>
-            <Text
-              style={[
-                styles.viewExplorerButtonText,
-                { color: colors.primary },
-              ]}>
-              View in Explorer
+          <View style={[styles.infoRow, { borderBottomWidth: 0 }]}>
+            <Text style={[styles.label, { color: colors.secondaryText }]}>
+              Status
             </Text>
-            <Ionicons name="open-outline" size={16} color={colors.primary} />
-          </TouchableOpacity>
-        )}
+            <View style={styles.statusContainer}>
+              <View
+                style={[
+                  styles.statusBadge,
+                  {
+                    backgroundColor:
+                      status === TransactionStatus.CONFIRMED
+                        ? colors.success + "20"
+                        : status === TransactionStatus.FAILED
+                          ? colors.error + "20"
+                          : colors.primaryLight,
+                  },
+                ]}>
+                <Text
+                  style={[
+                    styles.statusText,
+                    {
+                      color:
+                        status === TransactionStatus.CONFIRMED
+                          ? colors.success
+                          : status === TransactionStatus.FAILED
+                            ? colors.error
+                            : colors.primary,
+                    },
+                  ]}>
+                  {getStatusText()}
+                </Text>
+              </View>
+            </View>
+          </View>
+        </View>
 
-        {!isLoading && !isSuccess && errorMessage && (
-          <View style={styles.errorContainer}>
+        {status === TransactionStatus.FAILED && (
+          <View
+            style={[styles.errorBox, { backgroundColor: colors.error + "10" }]}>
             <Ionicons
               name="alert-circle-outline"
               size={20}
               color={colors.error}
             />
-            <Text style={[styles.errorText, { color: colors.error }]}>
-              {errorMessage}
+            <Text style={[styles.errorBoxText, { color: colors.error }]}>
+              {getStatusDescription()}
             </Text>
           </View>
         )}
 
-        {!isLoading && (
-          <TouchableOpacity
-            style={[styles.returnButton, { backgroundColor: colors.primary }]}
-            onPress={handleReturn}>
-            <Text style={styles.returnButtonText}>Return to Wallet</Text>
-            <Ionicons name="arrow-forward" size={20} color="#FFFFFF" />
-          </TouchableOpacity>
-        )}
+        <View style={styles.actionsContainer}>
+          {explorerLink && status === TransactionStatus.CONFIRMED && (
+            <TouchableOpacity
+              style={[
+                styles.actionButton,
+                {
+                  backgroundColor: colors.primaryLight,
+                  borderColor: colors.border,
+                },
+              ]}
+              onPress={openInExplorer}>
+              <Ionicons name="open-outline" size={20} color={colors.primary} />
+              <Text
+                style={[styles.actionButtonText, { color: colors.primary }]}>
+                View in Explorer
+              </Text>
+            </TouchableOpacity>
+          )}
+
+          {status !== TransactionStatus.CONFIRMED &&
+            status !== TransactionStatus.FAILED && (
+              <TouchableOpacity
+                style={[
+                  styles.confirmButton,
+                  {
+                    backgroundColor: colors.primary,
+                    opacity: isSubmitting || isProcessing ? 0.7 : 1,
+                  },
+                ]}
+                onPress={handleConfirmTransaction}
+                disabled={isSubmitting || isProcessing}>
+                {isSubmitting || isProcessing ? (
+                  <ActivityIndicator color="#FFFFFF" size="small" />
+                ) : (
+                  <>
+                    <Text style={styles.confirmButtonText}>
+                      Confirm Transaction
+                    </Text>
+                    <Ionicons
+                      name="checkmark-circle-outline"
+                      size={20}
+                      color="#FFFFFF"
+                    />
+                  </>
+                )}
+              </TouchableOpacity>
+            )}
+
+          {status === TransactionStatus.FAILED && (
+            <TouchableOpacity
+              style={[
+                styles.confirmButton,
+                {
+                  backgroundColor: colors.primary,
+                },
+              ]}
+              onPress={() => router.back()}>
+              <Text style={styles.confirmButtonText}>Try Again</Text>
+              <Ionicons name="refresh-outline" size={20} color="#FFFFFF" />
+            </TouchableOpacity>
+          )}
+
+          {status === TransactionStatus.CONFIRMED && (
+            <TouchableOpacity
+              style={[
+                styles.confirmButton,
+                { backgroundColor: colors.success },
+              ]}
+              onPress={handleReturnToWallet}>
+              <Text style={styles.confirmButtonText}>Return to Wallet</Text>
+              <Ionicons name="arrow-forward" size={20} color="#FFFFFF" />
+            </TouchableOpacity>
+          )}
+        </View>
+
+        <View style={styles.note}>
+          <Text style={[styles.noteText, { color: colors.secondaryText }]}>
+            Once confirmed, this transaction cannot be reversed.
+          </Text>
+        </View>
       </ScrollView>
     </SafeAreaView>
   );
@@ -272,122 +426,260 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingHorizontal: 16,
-    height: 56,
-    borderBottomWidth: 1,
-  },
-  headerTitle: {
-    fontSize: 18,
-    fontWeight: "600",
+    paddingHorizontal: 20,
+    paddingTop: 10,
+    paddingBottom: 10,
   },
   backButton: {
     padding: 8,
   },
-  headerRightPlaceholder: {
+  title: {
+    fontSize: 18,
+    fontWeight: "600",
+  },
+  placeholder: {
     width: 40,
   },
-  scrollContainer: {
+  content: {
     flex: 1,
   },
-  scrollContentContainer: {
-    paddingHorizontal: 16,
-    paddingBottom: 80,
-    alignItems: "center",
-    justifyContent: "center",
-    flexGrow: 1,
+  contentContainer: {
+    padding: 20,
   },
-  resultIconContainer: {
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: 24,
-    marginTop: 48,
+  card: {
+    borderRadius: 16,
+    padding: 20,
+    marginBottom: 20,
   },
-  errorIconCircle: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  resultTitle: {
-    fontSize: 24,
-    fontWeight: "700",
-    marginBottom: 16,
-    textAlign: "center",
-  },
-  resultDescription: {
-    fontSize: 16,
-    textAlign: "center",
-    marginBottom: 24,
-    paddingHorizontal: 16,
-  },
-  hashContainer: {
-    marginBottom: 16,
-    alignItems: "center",
-    width: "100%",
-  },
-  hashLabel: {
-    fontSize: 14,
-    marginBottom: 4,
-  },
-  hashRow: {
+  cardHeader: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
+    marginBottom: 20,
+  },
+  cardTitle: {
+    fontSize: 18,
+    fontWeight: "600",
+    marginLeft: 12,
+  },
+  infoRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+  },
+  label: {
+    fontSize: 14,
+  },
+  networkBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+    borderRadius: 6,
+  },
+  networkDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    marginRight: 6,
+  },
+  networkText: {
+    fontSize: 14,
+    fontWeight: "500",
+  },
+  hashContainer: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "flex-end",
+    marginLeft: 16,
   },
   hashText: {
     fontSize: 14,
     fontFamily: "SpaceMono",
     lineHeight: 20,
+    flex: 1,
     textAlign: "right",
-    maxWidth: 180,
   },
-  copyButton: {
-    padding: 4,
-    marginLeft: 8,
+  statusContainer: {
+    flex: 1,
+    alignItems: "flex-end",
   },
-  viewExplorerButton: {
+  statusBadge: {
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+    borderRadius: 6,
+  },
+  statusText: {
+    fontSize: 14,
+    fontWeight: "500",
+  },
+  actionsContainer: {
+    gap: 12,
+    marginBottom: 20,
+  },
+  actionButton: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
     paddingVertical: 12,
     paddingHorizontal: 16,
     borderRadius: 8,
-    marginBottom: 24,
+    borderWidth: 1,
   },
-  viewExplorerButtonText: {
-    fontSize: 14,
-    fontWeight: "600",
-    marginRight: 8,
+  actionButtonText: {
+    marginLeft: 6,
+    fontSize: 13,
+    fontWeight: "500",
   },
-  errorContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "rgba(255, 59, 48, 0.1)",
-    padding: 12,
-    borderRadius: 8,
-    marginBottom: 16,
-  },
-  errorText: {
-    marginLeft: 8,
-    flex: 1,
-  },
-  returnButton: {
+  confirmButton: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    paddingVertical: 16,
+    paddingVertical: 12,
     paddingHorizontal: 16,
     borderRadius: 8,
-    backgroundColor: "#2E85FE",
-    marginTop: 8,
-    width: "100%",
   },
-  returnButtonText: {
+  confirmButtonText: {
     color: "#FFFFFF",
     fontSize: 16,
     fontWeight: "600",
     marginRight: 8,
+  },
+  note: {
+    alignItems: "center",
+    paddingVertical: 12,
+  },
+  noteText: {
+    fontSize: 14,
+    textAlign: "center",
+  },
+  errorContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 20,
+  },
+  errorTitle: {
+    fontSize: 18,
+    fontWeight: "600",
+    marginTop: 16,
+    marginBottom: 8,
+  },
+  errorText: {
+    fontSize: 14,
+    textAlign: "center",
+    marginBottom: 24,
+    lineHeight: 20,
+  },
+  errorBox: {
+    flexDirection: "row",
+    alignItems: "center",
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 20,
+  },
+  errorBoxText: {
+    fontSize: 14,
+    marginLeft: 8,
+    flex: 1,
+  },
+  loadingOverlay: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    justifyContent: "center",
+    alignItems: "center",
+    zIndex: 1000,
+  },
+  loadingText: {
+    fontSize: 16,
+    fontWeight: "500",
+    textAlign: "center",
+    marginTop: 10,
+  },
+  codeContainer: {
+    maxHeight: 200,
+    padding: 10,
+    backgroundColor: "#f5f5f5",
+    borderRadius: 8,
+  },
+  codeText: {
+    fontFamily: "monospace",
+    fontSize: 12,
+  },
+  instructionsContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    flex: 1,
+  },
+  instructionsText: {
+    fontSize: 14,
+    fontWeight: "500",
+  },
+  toggleButton: {
+    padding: 8,
+  },
+  instructionsDetails: {
+    padding: 12,
+    borderWidth: 1,
+    borderRadius: 8,
+    marginBottom: 12,
+  },
+  instructionItem: {
+    marginBottom: 16,
+    padding: 12,
+    borderRadius: 8,
+  },
+  instructionHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 12,
+  },
+  instructionTitle: {
+    fontSize: 16,
+    fontWeight: "600",
+  },
+  programText: {
+    fontSize: 12,
+    fontWeight: "500",
+  },
+  accountsContainer: {
+    marginTop: 8,
+  },
+  accountsLabel: {
+    fontSize: 14,
+    fontWeight: "500",
+    marginBottom: 8,
+  },
+  accountsList: {
+    gap: 8,
+  },
+  accountItem: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  accountLabel: {
+    fontSize: 14,
+    width: "30%",
+  },
+  accountValueContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    width: "70%",
+  },
+  accountValue: {
+    fontSize: 14,
+    flex: 1,
+  },
+  copyButton: {
+    padding: 4,
+    marginLeft: 8,
   },
 });

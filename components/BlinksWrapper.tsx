@@ -36,15 +36,6 @@ export const BlinkWrapper: React.FC<BlinkWrapperProps> = ({ url, account }) => {
   // Get the action data from the Dialect Blinks API
   const { action, isLoading: actionLoading } = useAction({ url });
 
-  // // Log mount and unmount events (helpful for debugging)
-  // useEffect(() => {
-  //   console.log(
-  //     `[Blink] Initialized with URL: ${url} [${requestIdRef.current}]`,
-  //   );
-  //   return () => console.log(`[Blink] Unmounted [${requestIdRef.current}]`);
-  // }, [url]);
-
-  // Create wallet adapter for Dialect Blinks
   const getWalletAdapter = (): ActionAdapter => {
     if (!account || !account.publicKey) {
       throw new Error("No wallet account available");
@@ -52,52 +43,45 @@ export const BlinkWrapper: React.FC<BlinkWrapperProps> = ({ url, account }) => {
 
     return {
       connect: async (_context) => {
-        console.log("[Blink] Connecting wallet");
+        console.log("Connecting wallet for Dialect Blink");
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
         return account.publicKey.toString();
       },
-
       signTransaction: async (_tx, _context) => {
-        console.log("[Blink] Signing transaction:", _tx);
+        console.log("signTransaction", _tx);
         setTxHash(_tx);
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
         return {
           signature: _tx,
         };
       },
-
       signMessage: async (message: string | SignMessageData, _context) => {
-        console.log("[Blink] Signing message");
+        console.log("signMessage entered", message);
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
         const messageToSign =
           typeof message === "string"
             ? message
             : createSignMessageText(message);
-        console.log("[Blink] Message to sign:", messageToSign);
+        console.log("signMessage", messageToSign);
         return { signature: "signature" };
       },
-
       confirmTransaction: async (_signature, _context) => {
-        console.log("[Blink] Confirming transaction:", _signature);
+        console.log("confirmTransaction", _signature);
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         if (_signature) {
-          console.log("signature: ", _signature);
-
           router.push({
             pathname: "/authenticated/dialect-blink/confirm",
             params: {
-              encodedTx: _signature,
-              network: "solana:101",
+              transactionHash: txHash,
             },
           });
         }
       },
-
       metadata: {
         supportedBlockchainIds: [
           BlockchainIds.SOLANA_MAINNET,
-          // BlockchainIds.SOLANA_DEVNET,
-          // BlockchainIds.SOLANA_TESTNET,
+          BlockchainIds.SOLANA_DEVNET,
+          BlockchainIds.SOLANA_TESTNET,
         ],
       },
     };
