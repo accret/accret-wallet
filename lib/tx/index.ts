@@ -10,7 +10,6 @@ import {
   estimateTransactionFee as estimateSolanaTransactionFee,
   createEncodedTokenTransferInstruction as createSolanaEncodedTokenTransferInstruction,
 } from "./solana/transferInstruction";
-import { executeBlinkTx } from "./solana/executeBlinkTx";
 import { executeEncodedTx as executeSolanaEncodedTx } from "./solana/executeEncodedTx";
 
 type ChainId =
@@ -162,17 +161,4 @@ export async function executeTokenTransfer({
       error: error instanceof Error ? error.message : String(error),
     };
   }
-}
-
-// Function to send Blink encoded transaction
-export async function executeBlinkEncodedTx(
-  encodedTransaction: string,
-): Promise<TransactionResult> {
-  const result = await executeBlinkTx(encodedTransaction);
-
-  return {
-    hash: (result as any).signature || "",
-    status: !result.value.err,
-    error: result.value.err ? JSON.stringify(result.value.err) : undefined,
-  };
 }

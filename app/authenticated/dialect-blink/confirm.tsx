@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import {
   View,
   Text,
@@ -31,54 +31,114 @@ export default function DialectBlinkConfirmScreen() {
   const [explorerUrl, setExplorerUrl] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
 
+  // Ref to track component mount status and cleanup timeouts
+  const isMountedRef = useRef(true);
+  const copyTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      isMountedRef.current = false;
+      if (copyTimeoutRef.current) {
+        clearTimeout(copyTimeoutRef.current);
+      }
+    };
+  }, []);
+
   useEffect(() => {
     const sendTx = async () => {
+      if (!isMountedRef.current) return;
+
       setIsLoading(true);
       setIsSuccess(null);
       setErrorMessage(null);
       setTxHash(null);
       setExplorerUrl(null);
+
       try {
         const result = await executeEncodedTx(encodedTx);
-        // result.signature is the hash
-        if (result && (result as any).signature) {
-          setTxHash((result as any).signature);
-          setExplorerUrl(
-            getExplorerUrl("solana:101", (result as any).signature),
-          );
-          setIsSuccess(true);
-          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+
+        // Check if component is still mounted before updating state
+        if (!isMountedRef.current) return;
+
+        // Safe type checking instead of unsafe assertions
+        if (result && typeof result === "object" && "signature" in result) {
+          const signature = (result as any).signature;
+          if (typeof signature === "string") {
+            setTxHash(signature);
+            setExplorerUrl(getExplorerUrl("solana:101", signature));
+            setIsSuccess(true);
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+          } else {
+            setIsSuccess(false);
+            setErrorMessage("Invalid transaction signature format");
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+          }
         } else {
           setIsSuccess(false);
           setErrorMessage("No transaction signature returned");
           Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
         }
-      } catch (err: any) {
+      } catch (err: unknown) {
+        // Check if component is still mounted before updating state
+        if (!isMountedRef.current) return;
+
         setIsSuccess(false);
-        setErrorMessage(err?.message || "Unknown error occurred");
+        const errorMsg =
+          err instanceof Error ? err.message : "Unknown error occurred";
+        setErrorMessage(errorMsg);
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       } finally {
-        setIsLoading(false);
+        // Check if component is still mounted before updating state
+        if (isMountedRef.current) {
+          setIsLoading(false);
+        }
       }
     };
-    if (encodedTx) sendTx();
+
+    if (encodedTx) {
+      sendTx();
+    }
   }, [encodedTx]);
 
   const handleCopyHash = async () => {
-    if (!txHash) return;
-    await Clipboard.setStringAsync(txHash);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    if (!txHash || !isMountedRef.current) return;
+
+    try {
+      await Clipboard.setStringAsync(txHash);
+
+      if (!isMountedRef.current) return;
+
+      setCopied(true);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+
+      // Clear any existing timeout
+      if (copyTimeoutRef.current) {
+        clearTimeout(copyTimeoutRef.current);
+      }
+
+      // Set new timeout with proper cleanup
+      copyTimeoutRef.current = setTimeout(() => {
+        if (isMountedRef.current) {
+          setCopied(false);
+        }
+      }, 2000);
+    } catch (error) {
+      console.error("Failed to copy hash:", error);
+      if (isMountedRef.current) {
+        Alert.alert("Error", "Failed to copy transaction hash");
+      }
+    }
   };
 
   const handleViewInExplorer = async () => {
-    if (explorerUrl) {
-      try {
-        await WebBrowser.openBrowserAsync(explorerUrl);
-      } catch (e) {
-        Alert.alert("Error", "Failed to open explorer");
-      }
+    if (!explorerUrl) return;
+
+    try {
+      await WebBrowser.openBrowserAsync(explorerUrl);
+    } catch (error) {
+      console.error("Failed to open explorer:", error);
+      Alert.alert("Error", "Failed to open explorer");
     }
   };
 
@@ -98,6 +158,7 @@ export default function DialectBlinkConfirmScreen() {
         </Text>
         <View style={styles.headerRightPlaceholder} />
       </View>
+
       <ScrollView
         contentContainerStyle={styles.scrollContentContainer}
         style={styles.scrollContainer}>
@@ -116,6 +177,7 @@ export default function DialectBlinkConfirmScreen() {
             </View>
           )}
         </View>
+
         <Text style={[styles.resultTitle, { color: colors.text }]}>
           {isLoading
             ? "Processing Transaction..."
@@ -123,14 +185,16 @@ export default function DialectBlinkConfirmScreen() {
               ? "Transaction Successful"
               : "Transaction Failed"}
         </Text>
+
         <Text
           style={[styles.resultDescription, { color: colors.secondaryText }]}>
           {isLoading
             ? "Your transaction is being submitted to the network..."
             : isSuccess
-              ? `Your transaction has been confirmed on Solana Mainnet.`
+              ? "Your transaction has been confirmed on Solana Mainnet."
               : `There was an error while trying to send your transaction${errorMessage ? ": " + errorMessage : ""}`}
         </Text>
+
         {txHash && !isLoading && (
           <View style={styles.hashContainer}>
             <Text style={[styles.hashLabel, { color: colors.secondaryText }]}>
@@ -155,6 +219,7 @@ export default function DialectBlinkConfirmScreen() {
             </View>
           </View>
         )}
+
         {explorerUrl && !isLoading && (
           <TouchableOpacity
             style={[
@@ -172,6 +237,7 @@ export default function DialectBlinkConfirmScreen() {
             <Ionicons name="open-outline" size={16} color={colors.primary} />
           </TouchableOpacity>
         )}
+
         {!isLoading && !isSuccess && errorMessage && (
           <View style={styles.errorContainer}>
             <Ionicons
@@ -184,6 +250,7 @@ export default function DialectBlinkConfirmScreen() {
             </Text>
           </View>
         )}
+
         {!isLoading && (
           <TouchableOpacity
             style={[styles.returnButton, { backgroundColor: colors.primary }]}

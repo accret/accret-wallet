@@ -26,11 +26,9 @@ export async function executeEncodedTx(
   }
 
   const secretKeyDecoded = bs58.decode(solanaAccount.privateKey);
-
   const signer = Keypair.fromSecretKey(secretKeyDecoded);
 
   const rpcUrl = getRpcUrl("solana:101");
-
   const connection = new Connection(rpcUrl, "confirmed");
 
   const buffer = Buffer.from(encodedInstruction, "base64");
@@ -41,35 +39,78 @@ export async function executeEncodedTx(
 
     let signature: TransactionSignature;
 
-    if (buffer[0] === 0x80) {
-      // Versioned transaction
-      const tx = VersionedTransaction.deserialize(buffer);
-      // Sign the transaction
-      tx.sign([signer]);
+    // Check if this is a versioned transaction by looking at the version byte
+    if (buffer[0] & 0x80) {
+      // Versioned transaction (version bit is set)
+      console.log("Processing versioned transaction");
 
-      // Send transaction - no retries
-      signature = await connection.sendTransaction(tx, {
-        skipPreflight: false,
-        preflightCommitment: "confirmed",
-        maxRetries: 0, // No retries
-      });
+      try {
+        // Try to deserialize as VersionedTransaction first
+        const tx = VersionedTransaction.deserialize(buffer);
+
+        // Sign the transaction
+        tx.sign([signer]);
+
+        // Send transaction
+        signature = await connection.sendTransaction(tx, {
+          skipPreflight: false,
+          preflightCommitment: "confirmed",
+          maxRetries: 0,
+        });
+      } catch (deserializeError) {
+        console.log(
+          "Failed to deserialize as VersionedTransaction, trying alternative method:",
+          deserializeError,
+        );
+
+        // Alternative approach: try to handle as raw transaction data
+        try {
+          // If the above fails, it might be a raw transaction that needs to be sent directly
+          signature = await connection.sendRawTransaction(buffer, {
+            skipPreflight: false,
+            preflightCommitment: "confirmed",
+            maxRetries: 0,
+          });
+        } catch (rawError) {
+          console.error("Failed to send as raw transaction:", rawError);
+          throw new Error(
+            `Failed to process versioned transaction: ${deserializeError}`,
+          );
+        }
+      }
     } else {
       // Legacy transaction
-      const tx = Transaction.from(buffer);
+      console.log("Processing legacy transaction");
 
-      // Update with fresh blockhash
-      tx.recentBlockhash = blockhash;
-      tx.feePayer = signer.publicKey;
+      try {
+        const tx = Transaction.from(buffer);
 
-      // Sign the transaction
-      tx.partialSign(signer);
+        // Update with fresh blockhash
+        tx.recentBlockhash = blockhash;
+        tx.feePayer = signer.publicKey;
 
-      // Send transaction - no retries
-      signature = await connection.sendRawTransaction(tx.serialize(), {
-        skipPreflight: false,
-        preflightCommitment: "confirmed",
-        maxRetries: 0, // No retries
-      });
+        // Sign the transaction
+        tx.partialSign(signer);
+
+        // Send transaction
+        signature = await connection.sendRawTransaction(tx.serialize(), {
+          skipPreflight: false,
+          preflightCommitment: "confirmed",
+          maxRetries: 0,
+        });
+      } catch (legacyError) {
+        console.log(
+          "Failed to process as legacy transaction, trying raw send:",
+          legacyError,
+        );
+
+        // Fallback: try to send as raw transaction
+        signature = await connection.sendRawTransaction(buffer, {
+          skipPreflight: false,
+          preflightCommitment: "confirmed",
+          maxRetries: 0,
+        });
+      }
     }
 
     console.log("Transaction sent with signature:", signature);
@@ -91,6 +132,7 @@ export async function executeEncodedTx(
       "Transaction successfully processed:",
       confirmation.context.slot,
     );
+
     return {
       context: confirmation.context,
       value: { err: null },
@@ -99,6 +141,39 @@ export async function executeEncodedTx(
     } as RpcResponseAndContext<SignatureResult> & { signature: string };
   } catch (error) {
     console.error("Error executing Solana transaction:", error);
-    throw error;
+
+    // If all else fails, try to send the transaction as-is (it might already be properly signed)
+    try {
+      console.log(
+        "Attempting final fallback: sending transaction as raw bytes",
+      );
+      const signature = await connection.sendRawTransaction(buffer, {
+        skipPreflight: true, // Skip preflight for this fallback
+        preflightCommitment: "confirmed",
+        maxRetries: 0,
+      });
+
+      console.log("Fallback transaction sent with signature:", signature);
+
+      // Get fresh blockhash for confirmation
+      const { blockhash, lastValidBlockHeight } =
+        await connection.getLatestBlockhash("finalized");
+
+      // Wait for confirmation
+      const confirmation = await connection.confirmTransaction({
+        signature,
+        blockhash,
+        lastValidBlockHeight,
+      });
+
+      return {
+        context: confirmation.context,
+        value: confirmation.value,
+        signature: signature,
+      } as RpcResponseAndContext<SignatureResult> & { signature: string };
+    } catch (fallbackError) {
+      console.error("Fallback also failed:", fallbackError);
+      throw error; // Throw the original error
+    }
   }
 }
