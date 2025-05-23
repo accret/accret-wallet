@@ -62,6 +62,12 @@
       ],
       "expo-secure-store",
       [
+        "expo-camera",
+        {
+          "cameraPermission": "Allow $(PRODUCT_NAME) to access your camera for QR code scanning"
+        }
+      ],
+      [
         "expo-local-authentication",
         {
           "faceIDPermission": "Allow Accret Wallet to use Face ID for secure authentication and transaction authorization."
