@@ -16,7 +16,6 @@ import {
 } from "react-native";
 import * as Haptics from "expo-haptics";
 import { Ionicons } from "@expo/vector-icons";
-import { router } from "expo-router";
 import { useTheme } from "@/theme";
 import { SVM_Account } from "@/types/accountStorage";
 
@@ -26,12 +25,8 @@ export interface BlinkWrapperProps {
 }
 
 export const BlinkWrapper: React.FC<BlinkWrapperProps> = ({ url, account }) => {
-  // Use a requestId to prevent duplicate API calls on re-renders
-  // const requestIdRef = useRef(
-  //   `blink-${Math.random().toString(36).substring(7)}`,
-  // );
   const { colors } = useTheme();
-  const [txHash, setTxHash] = useState<string | null>(null);
+  const [, setTxHash] = useState<string | null>(null);
 
   // Get the action data from the Dialect Blinks API
   const { action, isLoading: actionLoading } = useAction({ url });
@@ -68,14 +63,6 @@ export const BlinkWrapper: React.FC<BlinkWrapperProps> = ({ url, account }) => {
       confirmTransaction: async (_signature, _context) => {
         console.log("confirmTransaction", _signature);
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        if (_signature) {
-          router.push({
-            pathname: "/authenticated/dialect-blink/confirm",
-            params: {
-              transactionHash: txHash,
-            },
-          });
-        }
       },
       metadata: {
         supportedBlockchainIds: [
