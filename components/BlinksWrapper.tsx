@@ -18,6 +18,7 @@ import * as Haptics from "expo-haptics";
 import { Ionicons } from "@expo/vector-icons";
 import { useTheme } from "@/theme";
 import { SVM_Account } from "@/types/accountStorage";
+import { executeBlinkTx } from "@/lib/tx/solana/executeBlinkTx";
 
 export interface BlinkWrapperProps {
   url: string;
@@ -43,11 +44,16 @@ export const BlinkWrapper: React.FC<BlinkWrapperProps> = ({ url, account }) => {
         return account.publicKey.toString();
       },
       signTransaction: async (_tx, _context) => {
-        console.log("signTransaction", _tx);
-        setTxHash(_tx);
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+        if (_tx) {
+          console.log("signTransaction", _tx);
+          setTxHash(_tx);
+          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+          return {
+            signature: _tx,
+          };
+        }
         return {
-          signature: _tx,
+          error: "No transaction provided",
         };
       },
       signMessage: async (message: string | SignMessageData, _context) => {
@@ -62,14 +68,19 @@ export const BlinkWrapper: React.FC<BlinkWrapperProps> = ({ url, account }) => {
       },
       confirmTransaction: async (_signature, _context) => {
         console.log("confirmTransaction", _signature);
+
+        if (_signature) {
+          try {
+            const performTransaction = await executeBlinkTx(_signature);
+            console.log("performTransaction", performTransaction);
+          } catch (error) {
+            console.error("Error performing transaction", error);
+          }
+        }
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       },
       metadata: {
-        supportedBlockchainIds: [
-          BlockchainIds.SOLANA_MAINNET,
-          BlockchainIds.SOLANA_DEVNET,
-          BlockchainIds.SOLANA_TESTNET,
-        ],
+        supportedBlockchainIds: [BlockchainIds.SOLANA_MAINNET],
       },
     };
   };
