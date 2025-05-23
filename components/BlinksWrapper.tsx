@@ -18,7 +18,8 @@ import * as Haptics from "expo-haptics";
 import { Ionicons } from "@expo/vector-icons";
 import { useTheme } from "@/theme";
 import { SVM_Account } from "@/types/accountStorage";
-import { executeBlinkTx } from "@/lib/tx/solana/executeBlinkTx";
+import { router } from "expo-router";
+// import { executeBlinkTx } from "@/lib/tx/solana/executeBlinkTx";
 
 export interface BlinkWrapperProps {
   url: string;
@@ -70,14 +71,14 @@ export const BlinkWrapper: React.FC<BlinkWrapperProps> = ({ url, account }) => {
         console.log("confirmTransaction", _signature);
 
         if (_signature) {
-          try {
-            const performTransaction = await executeBlinkTx(_signature);
-            console.log("performTransaction", performTransaction);
-          } catch (error) {
-            console.error("Error performing transaction", error);
-          }
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+          router.push({
+            pathname: "/authenticated/dialect-blink/confirm",
+            params: {
+              encodedTx: _signature,
+            },
+          });
         }
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       },
       metadata: {
         supportedBlockchainIds: [BlockchainIds.SOLANA_MAINNET],
